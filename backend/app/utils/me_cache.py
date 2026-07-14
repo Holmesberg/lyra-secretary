@@ -7,7 +7,8 @@ Frontend hits it on every page load + every tab switch (via the layout
 shell), so it's the single biggest contributor to "the app feels slow."
 
 Strategy:
-  * Cache the full /me response JSON for 30s, keyed by user_id.
+  * Cache the full /me response JSON for 30s, keyed by user and mutation
+    generation.
   * Bust ONLY on user-row mutations (~10 endpoints) — accept 30s of
     stale `executed_session_count` and `has_active_task_history`. The
     one exception that must bust outside the user row: the first
@@ -21,8 +22,9 @@ Strategy:
     endpoint runs the queries directly. Same shape as
     services/calendar_sync.py.
 
-Cache key versioned ("v1") so a future shape change just bumps the
-version — old keys age out via TTL.
+Invalidation advances the generation. An older in-flight read may finish, but
+its payload is published only under the obsolete generation and cannot become
+current. Payload keys remain versioned so old generations age out via TTL.
 """
 from __future__ import annotations
 
@@ -35,12 +37,59 @@ from app.utils.redis_client import RedisClient
 logger = logging.getLogger(__name__)
 
 _CACHE_KEY_PREFIX = "me:"
-_CACHE_KEY_VERSION = "v1"
+_CACHE_KEY_VERSION = "v2"
 _DEFAULT_TTL_SECONDS = 30
 
 
-def _key(user_id: int) -> str:
-    return f"{_CACHE_KEY_PREFIX}{user_id}:{_CACHE_KEY_VERSION}"
+def _epoch_key(user_id: int) -> str:
+    return f"{_CACHE_KEY_PREFIX}{user_id}:epoch:{_CACHE_KEY_VERSION}"
+
+
+def _key(user_id: int, epoch: int = 0) -> str:
+    return f"{_CACHE_KEY_PREFIX}{user_id}:{epoch}:{_CACHE_KEY_VERSION}"
+
+
+def _decode_epoch(raw: Any) -> int:
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    return int(raw or 0)
+
+
+def get_cached_me_with_epoch(
+    user_id: int,
+) -> tuple[Optional[dict[str, Any]], Optional[int]]:
+    """Return the current payload and the generation safe for publication."""
+    try:
+        client = RedisClient().client
+        confirmed_epoch = 0
+        for _attempt in range(2):
+            epoch = _decode_epoch(client.get(_epoch_key(user_id)))
+            raw = client.get(_key(user_id, epoch))
+            confirmed_epoch = _decode_epoch(client.get(_epoch_key(user_id)))
+            if confirmed_epoch != epoch:
+                continue
+            if raw is None:
+                return None, epoch
+            try:
+                if isinstance(raw, bytes):
+                    raw = raw.decode("utf-8")
+                return json.loads(raw), epoch
+            except Exception as e:
+                logger.warning(
+                    "me_cache: cached payload parse failed for user %s, "
+                    "dropping: %s",
+                    user_id,
+                    e,
+                )
+                try:
+                    client.delete(_key(user_id, epoch))
+                except Exception:
+                    pass
+                return None, epoch
+        return None, confirmed_epoch
+    except Exception as e:
+        logger.warning("me_cache: get failed for user %s: %s", user_id, e)
+        return None, None
 
 
 def get_cached_me(user_id: int) -> Optional[dict[str, Any]]:
@@ -49,29 +98,8 @@ def get_cached_me(user_id: int) -> Optional[dict[str, Any]]:
     Never raises — Redis-down or cache-poisoning fall through to None
     so the endpoint runs its normal path.
     """
-    try:
-        raw = RedisClient().client.get(_key(user_id))
-    except Exception as e:
-        # Don't let Redis hiccups break sign-in. Logged but non-blocking.
-        logger.warning("me_cache: get failed for user %s: %s", user_id, e)
-        return None
-    if raw is None:
-        return None
-    try:
-        if isinstance(raw, bytes):
-            raw = raw.decode("utf-8")
-        return json.loads(raw)
-    except Exception as e:
-        logger.warning(
-            "me_cache: cached payload parse failed for user %s, dropping: %s",
-            user_id, e,
-        )
-        # Best-effort cleanup — corrupted entry should self-heal next call.
-        try:
-            RedisClient().client.delete(_key(user_id))
-        except Exception:
-            pass
-        return None
+    payload, _epoch = get_cached_me_with_epoch(user_id)
+    return payload
 
 
 def set_cached_me(
@@ -79,16 +107,37 @@ def set_cached_me(
 ) -> None:
     """Store a /me response payload with TTL. Silent on failure."""
     try:
-        RedisClient().client.setex(
-            _key(user_id), ttl, json.dumps(payload, default=str)
-        )
+        client = RedisClient().client
+        epoch = _decode_epoch(client.get(_epoch_key(user_id)))
+        client.setex(_key(user_id, epoch), ttl, json.dumps(payload, default=str))
     except Exception as e:
         logger.warning("me_cache: set failed for user %s: %s", user_id, e)
 
 
-def invalidate_me(user_id: int) -> None:
-    """Drop the cached /me for this user. Called by mutating endpoints."""
+def set_cached_me_if_epoch(
+    user_id: int,
+    payload: dict[str, Any],
+    expected_epoch: Optional[int],
+    ttl: int = _DEFAULT_TTL_SECONDS,
+) -> bool:
+    """Publish into the captured generation; stale generations stay unread."""
+    if expected_epoch is None:
+        return False
     try:
-        RedisClient().client.delete(_key(user_id))
+        RedisClient().client.setex(
+            _key(user_id, expected_epoch),
+            ttl,
+            json.dumps(payload, default=str),
+        )
+        return True
+    except Exception as e:
+        logger.warning("me_cache: fenced set failed for user %s: %s", user_id, e)
+        return False
+
+
+def invalidate_me(user_id: int) -> None:
+    """Advance the user's generation so older publications become unread."""
+    try:
+        RedisClient().client.incr(_epoch_key(user_id))
     except Exception as e:
         logger.warning("me_cache: invalidate failed for user %s: %s", user_id, e)

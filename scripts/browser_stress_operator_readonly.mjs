@@ -35,6 +35,7 @@ const cookieHeader = process.env.LYRA_COOKIE_ALINASSERSABRY || "";
 const runId = args.get("run-id") || process.env.LYRA_BROWSER_STRESS_RUN_ID || new Date().toISOString().replace(/[:.]/g, "-");
 const outDir = path.resolve(args.get("out-dir") || path.join(repoRoot, "tmp", `operator-readonly-stress-${runId}`));
 const proxyApi = args.get("proxy-api") === "true";
+const fixtureAccountReady = args.get("fixture-account-ready") === "true";
 const expectReadinessSplit = args.get("expect-readiness-split") === "true";
 const selfTestAttribution = args.get("self-test-attribution") === "true";
 
@@ -432,13 +433,30 @@ async function installApiProxy(context) {
         timeout: 45_000,
         failOnStatusCode: false,
       });
+      const responseHeaders = {
+        ...response.headers(),
+        ...corsHeaders,
+      };
+      let responseBody = await response.body();
+      if (
+        fixtureAccountReady
+        && request.method().toUpperCase() === "GET"
+        && new URL(request.url()).pathname === "/v1/users/me"
+        && response.ok()
+      ) {
+        const me = JSON.parse(responseBody.toString("utf8"));
+        me.terms_accepted_at = me.terms_accepted_at || "1970-01-01T00:00:00Z";
+        me.archetype_survey_eligible = false;
+        me.onboarding_completed_at = me.onboarding_completed_at || "1970-01-01T00:00:00Z";
+        me.has_active_task_history = true;
+        responseBody = Buffer.from(JSON.stringify(me));
+        delete responseHeaders["content-encoding"];
+        delete responseHeaders["content-length"];
+      }
       await route.fulfill({
         status: response.status(),
-        headers: {
-          ...response.headers(),
-          ...corsHeaders,
-        },
-        body: await response.body(),
+        headers: responseHeaders,
+        body: responseBody,
       });
     } catch (error) {
       if (/Target page, context or browser has been closed/i.test(String(error?.message || error))) {
@@ -648,9 +666,11 @@ const result = {
   apiOrigin,
   outDir: path.relative(repoRoot, outDir).replaceAll("\\", "/"),
   proxy_api: proxyApi,
+  fixture_account_ready: fixtureAccountReady,
   expect_readiness_split: expectReadinessSplit,
   user_ref: null,
   is_operator: null,
+  account_eligibility_blockers: [],
   before_counts: null,
   pre_dashboard_count_diffs: [],
   pre_dashboard_count_diff_attribution: [],
@@ -682,6 +702,19 @@ try {
   if (!result.is_operator) {
     result.issues.push("alinassersabry cookie did not resolve to an operator account");
   }
+  result.account_eligibility_blockers = [
+    !me.body.terms_accepted_at ? "terms_not_accepted" : null,
+    me.body.archetype_survey_eligible ? "archetype_survey_pending" : null,
+    !me.body.onboarding_completed_at ? "onboarding_not_completed" : null,
+    !me.body.has_active_task_history ? "no_active_task_history" : null,
+  ].filter(Boolean);
+  const browserRouteEligible = fixtureAccountReady
+    || result.account_eligibility_blockers.length === 0;
+  if (!browserRouteEligible) {
+    result.issues.push(
+      `operator browser account preflight blocked route proof: ${result.account_eligibility_blockers.join(", ")}`,
+    );
+  }
 
   const beforeExport = await fetchJson("/v1/users/me/export", token);
   if (beforeExport.status !== 200) throw new Error(`pre export failed with ${beforeExport.status}`);
@@ -709,27 +742,29 @@ try {
   }
   result.dashboard_before_snapshot = dashboardReadOnlySnapshot(beforeDashboard.body || {});
 
-  for (const viewport of viewports) {
-    await page.setViewportSize({ width: viewport.width, height: viewport.height });
-    for (const route of routes) {
-      const routeBeforeExport = await fetchJson("/v1/users/me/export", token);
-      const routeBeforeCounts = countExport(routeBeforeExport.body || {});
-      const routeResult = await checkRoute(page, route, viewport);
-      result.routes.push(routeResult);
-      const routeAfterExport = await fetchJson("/v1/users/me/export", token);
-      const routeAfterCounts = countExport(routeAfterExport.body || {});
-      const routeDiffs = diffCounts(routeBeforeCounts, routeAfterCounts);
-      if (routeDiffs.length > 0) {
-        result.route_count_diffs.push({
-          viewport: viewport.name,
-          route: route.path,
-          diffs: routeDiffs,
-          attribution: attributeCountDiffs(
-            routeDiffs,
-            routeBeforeExport.body || {},
-            routeAfterExport.body || {},
-          ),
-        });
+  if (browserRouteEligible) {
+    for (const viewport of viewports) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      for (const route of routes) {
+        const routeBeforeExport = await fetchJson("/v1/users/me/export", token);
+        const routeBeforeCounts = countExport(routeBeforeExport.body || {});
+        const routeResult = await checkRoute(page, route, viewport);
+        result.routes.push(routeResult);
+        const routeAfterExport = await fetchJson("/v1/users/me/export", token);
+        const routeAfterCounts = countExport(routeAfterExport.body || {});
+        const routeDiffs = diffCounts(routeBeforeCounts, routeAfterCounts);
+        if (routeDiffs.length > 0) {
+          result.route_count_diffs.push({
+            viewport: viewport.name,
+            route: route.path,
+            diffs: routeDiffs,
+            attribution: attributeCountDiffs(
+              routeDiffs,
+              routeBeforeExport.body || {},
+              routeAfterExport.body || {},
+            ),
+          });
+        }
       }
     }
   }

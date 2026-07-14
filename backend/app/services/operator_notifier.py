@@ -1,6 +1,6 @@
 """Operator-facing notification fan-out through OpenClaw.
 
-Barzakh does not own a separate Telegram bot. Operator notifications are queued
+LyraOS does not own a separate Telegram bot. Operator notifications are queued
 into the same per-user Redis notification path that OpenClaw already polls,
 then OpenClaw relays them through its existing Telegram runtime.
 """

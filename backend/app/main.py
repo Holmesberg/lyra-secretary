@@ -204,7 +204,7 @@ async def lifespan(app: FastAPI):
     shutdown_scheduler()
 
 app = FastAPI(
-    title="Barzakh API",
+    title="LyraOS API",
     version="1.1",
     description="Adaptive scheduler and personal cognitive operating system",
     lifespan=lifespan
@@ -248,4 +248,4 @@ app.include_router(api_router, prefix="/v1")
 
 @app.get("/")
 def root():
-    return {"message": "Barzakh API is running"}
+    return {"message": "LyraOS API is running"}

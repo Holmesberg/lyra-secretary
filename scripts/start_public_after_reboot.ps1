@@ -56,17 +56,10 @@ do {
 } while ($true)
 
 Write-Step "Starting backend and Redis"
-Set-Location $repoRoot
-docker compose up -d --build backend redis
-if ($LASTEXITCODE -ne 0) {
-    throw "docker compose up failed."
-}
-
-Write-Step "Applying backend migrations"
-docker compose exec -T backend alembic upgrade head
-if ($LASTEXITCODE -ne 0) {
-    throw "alembic upgrade failed."
-}
+& (Join-Path $repoRoot "scripts\restart_backend_public.ps1") `
+    -ApprovedPublicRestart `
+    -NoBuild:$NoBuild `
+    -SkipHostedCheck
 
 Write-Step "Starting OpenClaw operator relay"
 powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\start_openclaw_operator_relay.ps1")
@@ -166,4 +159,4 @@ if (-not $SkipPublicCheck) {
 }
 
 Write-Host ""
-Write-Host "Barzakh public stack is up."
+Write-Host "LyraOS public stack is up."

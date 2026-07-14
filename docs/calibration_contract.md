@@ -89,7 +89,7 @@ Per `feedback_overfit_to_operator_guard` and `feedback_primitives_over_diagnosti
 
 - The risk is universalizing operator's specific cognitive topology (high introspection, systems-thinking, instrumentation tolerance, exploratory drive) onto median users who don't share it. NOT a clinical-condition framing.
 - `confirmed` tier requires `n ≥ 30` for **the requesting user's own data**, not aggregated across the cohort. Operator's 200+ sessions don't grant non-operator users `confirmed` status on the same signal.
-- Phase 2 hypotheses promoted from JARVIS get tagged `operator-only` or `potentially-general` in `docs/jarvis_hypothesis_log.md`. The tag-decision question: "Is this a behavioral primitive (transition friction, recovery latency, momentum collapse, action/declaration divergence, abandonment topology) — generalizable? OR a topology-specific trait (introspection appetite, archetype fascination, instrumentation tolerance) — operator-only?"
+- Phase 2 hypotheses promoted from JARVIS get tagged `operator-only` or `potentially-general` in `docs/archive/legacy/ai/jarvis_hypothesis_log.md`. The tag-decision question: "Is this a behavioral primitive (transition friction, recovery latency, momentum collapse, action/declaration divergence, abandonment topology) — generalizable? OR a topology-specific trait (introspection appetite, archetype fascination, instrumentation tolerance) — operator-only?"
 - Only `potentially-general` ships as user-facing reflection.
 - Phase 3 → Phase 4 gate: signatures from operator + 2 non-operator trusted users must show *discrimination*, not similarity. Signatures that look identical across the 3 are suspect for operator-overfit; debug before shipping.
 - User-facing reflection copy describes *behavior*, not identity. "After distraction pauses you usually resume in 2m" — not "Procrastinators recover slower." Diagnostic categories never reach user surfaces.
@@ -127,7 +127,7 @@ Reflection surfaces are quiet observations the user can ignore. They MUST NOT ad
 - Phase 4 reflection surfaces read from **prefetched/cached data**, never from new round-trips. Concrete pattern: extend the `/v1/users/me` response (called once per page load, cached aggressively per `frontend/lib/api.ts`) with the BehavioralSignature subset relevant to the rendering surface. /me is the read-side carrier.
 - For per-task reflection lines on `/today`, extend the `/v1/tasks/query` response (already cached) with per-task derived signals computed in the same join. One round-trip carries both the task list and its reflections.
 - For modal context lines (reflection-modal, new-task-modal calibration basis), the comparative context comes from the `/me` cache or a parent-component prefetch — **the modal opens immediately**, the context line is already present at first paint.
-- The new `/v1/analytics/behavioral_signature` endpoint exists for JARVIS + operator analytics; it is NOT called from user-facing rendering paths.
+- The new `/v1/analytics/behavioral_signature` endpoint exists for operator analytics and parked JARVIS aggregate compatibility through `behavioral_signature_service`; it is NOT called from user-facing rendering paths.
 
 **Write-side rules:**
 

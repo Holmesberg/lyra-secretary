@@ -65,7 +65,8 @@ def test_corrupted_cache_entry_self_heals():
     """If a stored value isn't valid JSON, get drops it and returns None."""
     from app.utils.redis_client import RedisClient
     rc = RedisClient().client
-    key = me_cache._key(999_996)
+    _payload, epoch = me_cache.get_cached_me_with_epoch(999_996)
+    key = me_cache._key(999_996, epoch or 0)
     rc.setex(key, 60, "not-json{garbage")
     # First read drops the bad entry and returns None.
     assert me_cache.get_cached_me(999_996) is None
@@ -93,9 +94,62 @@ def test_set_swallows_redis_errors():
 
 def test_invalidate_swallows_redis_errors():
     with patch("app.utils.me_cache.RedisClient") as MockRC:
-        MockRC.return_value.client.delete.side_effect = ConnectionError("redis down")
+        MockRC.return_value.client.incr.side_effect = ConnectionError("redis down")
         # Must not raise.
         me_cache.invalidate_me(1)
+
+
+class _GenerationRedis:
+    def __init__(self):
+        self.values = {}
+
+    def get(self, key):
+        return self.values.get(key)
+
+    def setex(self, key, _ttl, value):
+        self.values[key] = value
+
+    def delete(self, key):
+        return int(self.values.pop(key, None) is not None)
+
+    def incr(self, key):
+        value = int(self.values.get(key) or 0) + 1
+        self.values[key] = str(value)
+        return value
+
+
+def test_stale_writer_cannot_republish_after_invalidation(monkeypatch):
+    fake = _GenerationRedis()
+    monkeypatch.setattr(
+        me_cache,
+        "RedisClient",
+        lambda: type("Client", (), {"client": fake})(),
+    )
+    user_id = 777
+
+    cached, stale_epoch = me_cache.get_cached_me_with_epoch(user_id)
+    assert cached is None
+    assert stale_epoch == 0
+
+    me_cache.invalidate_me(user_id)
+    assert me_cache.set_cached_me_if_epoch(
+        user_id,
+        {"archetype_survey_eligible": True},
+        stale_epoch,
+    )
+
+    current, current_epoch = me_cache.get_cached_me_with_epoch(user_id)
+    assert current is None
+    assert current_epoch == 1
+
+    assert me_cache.set_cached_me_if_epoch(
+        user_id,
+        {"archetype_survey_eligible": False},
+        current_epoch,
+    )
+    current, confirmed_epoch = me_cache.get_cached_me_with_epoch(user_id)
+    assert current == {"archetype_survey_eligible": False}
+    assert confirmed_epoch == 1
 
 
 # ─── Integration: invalidation gets called by mutating endpoints ────────

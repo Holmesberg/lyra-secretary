@@ -13,6 +13,11 @@ export type AcademicPressureLevel = "low" | "medium" | "high" | "overdue";
 export type AcademicComplexityTier = "low" | "medium" | "high" | "unknown";
 export type AcademicConfidence = "low" | "medium" | "high";
 export type AcademicSourceClass = "external" | "native" | "lyra_task";
+export type AcademicProviderReadStatus =
+  | "available"
+  | "partial"
+  | "unavailable"
+  | "not_connected";
 export type AcademicEvidenceClass =
   | "external_obligation"
   | "native_obligation"
@@ -66,7 +71,8 @@ export interface AcademicSourceSummary {
   academic_task_minutes: number;
   study_task_minutes: number;
   google_calendar_connected: boolean;
-  calendar_busy_minutes: number;
+  google_calendar_read_status: AcademicProviderReadStatus;
+  calendar_busy_minutes: number | null;
   planned_lyra_minutes: number;
 }
 
@@ -92,12 +98,61 @@ export interface AcademicCoverageQuestion {
 }
 
 export interface AcademicCapacityContext {
-  known_busy_minutes: number;
+  known_busy_minutes: number | null;
   planned_lyra_minutes: number;
   estimated_academic_low_minutes: number;
   estimated_academic_high_minutes: number;
   google_calendar_connected: boolean;
+  google_calendar_read_status: AcademicProviderReadStatus;
   caveat: string;
+}
+
+export interface AcademicMinuteEnvelope {
+  low_minutes: number;
+  high_minutes: number;
+}
+
+export interface AcademicObligationDemandProjection {
+  obligation_id: string;
+  projection_role: "deadline_obligation" | "standalone_task_obligation";
+  source_class: AcademicSourceClass;
+  total_estimate: AcademicMinuteEnvelope;
+  completed_scope_credit: AcademicMinuteEnvelope;
+  remaining_demand: AcademicMinuteEnvelope;
+  feasible_future_coverage: AcademicMinuteEnvelope;
+  applied_coverage: AcademicMinuteEnvelope;
+  unscheduled_demand: AcademicMinuteEnvelope;
+  overcoverage: AcademicMinuteEnvelope;
+  linked_task_ids: string[];
+  coverage_task_ids: string[];
+  noncontributing_linked_task_ids: string[];
+  estimate_inconsistent: boolean;
+}
+
+export interface AcademicUnlinkedPlanningContext {
+  status: "context_only_not_demand_or_coverage";
+  task_count: number;
+  union_minutes: number;
+  task_ids: string[];
+}
+
+export interface AcademicDemandCoverageProjection {
+  schema_version: "academic_demand_coverage_projection_v1";
+  projection_status: "provisional_demand_only";
+  capacity_status: "unavailable_no_authority";
+  collision_state: "unknown";
+  obligation_count: number;
+  scenario_count: number;
+  total_estimate: AcademicMinuteEnvelope;
+  completed_scope_credit: AcademicMinuteEnvelope;
+  remaining_demand: AcademicMinuteEnvelope;
+  feasible_future_coverage: AcademicMinuteEnvelope;
+  applied_coverage: AcademicMinuteEnvelope;
+  unscheduled_demand: AcademicMinuteEnvelope;
+  overcoverage: AcademicMinuteEnvelope;
+  unlinked_planning_context: AcademicUnlinkedPlanningContext;
+  inconsistent_obligation_ids: string[];
+  obligations: AcademicObligationDemandProjection[];
 }
 
 export interface AcademicPressureMapResponse {
@@ -112,6 +167,7 @@ export interface AcademicPressureMapResponse {
   capacity_context: AcademicCapacityContext;
   estimated_low_minutes: number;
   estimated_high_minutes: number;
+  demand_coverage_projection: AcademicDemandCoverageProjection;
   source_summary: AcademicSourceSummary;
   methodology: string[];
   warnings: string[];
@@ -127,7 +183,7 @@ export interface AcademicPressureMapResponse {
   allowed_authority?: string[];
   denied_authority?: string[];
   exposure_id?: string | null;
-  render_id?: string | null;
+  render_snapshot?: Record<string, unknown> | null;
 }
 
 export function getAcademicPressureMap(

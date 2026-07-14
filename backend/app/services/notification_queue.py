@@ -16,6 +16,7 @@ from typing import Any
 from app.core.config import settings
 from app.services.notification_lifecycle import (
     ensure_notification_queued,
+    non_deliverable_notification_ids,
     reserve_notifications,
     transition_notifications,
 )
@@ -191,6 +192,21 @@ def _payload_id(payload: dict[str, Any]) -> str:
     return f"legacy:{_short_hash(stable)}"
 
 
+def remove_user_notifications(user_id: int, notification_ids: list[str]) -> int:
+    """Atomically remove matching web-visible payloads from the Redis list."""
+    wanted = {str(notification_id) for notification_id in notification_ids if notification_id}
+    if not wanted:
+        return 0
+    redis = RedisClient()
+    key = _queue_key(int(user_id))
+    removed = 0
+    for raw in list(redis.client.lrange(key, 0, -1)):
+        payload = json.loads(raw)
+        if _payload_id(payload) in wanted and _web_visible(payload):
+            removed += int(redis.client.lrem(key, 0, raw) or 0)
+    return removed
+
+
 def peek_user_notifications(
     user_id: int,
     *,
@@ -212,6 +228,26 @@ def peek_user_notifications(
         payload = dict(payload)
         payload.setdefault("notification_id", _payload_id(payload))
         items.append(payload)
+    if db is not None and items:
+        terminal_ids = non_deliverable_notification_ids(
+            db,
+            user_id=int(user_id),
+            notification_ids=[item["notification_id"] for item in items],
+            channel=channel,
+        )
+        if terminal_ids:
+            items = [
+                item for item in items
+                if str(item["notification_id"]) not in terminal_ids
+            ]
+            try:
+                remove_user_notifications(int(user_id), list(terminal_ids))
+            except Exception as exc:  # noqa: BLE001 - DB lifecycle fails closed
+                logger.warning(
+                    "notification_queue: terminal Redis prune failed for user %s: %s",
+                    user_id,
+                    type(exc).__name__,
+                )
     if db is not None and items:
         reserve_notifications(
             db,
@@ -248,22 +284,9 @@ def ack_user_notifications(
             status=event_type,
             channel="web",
         )
-    redis = RedisClient()
-    key = _queue_key(int(user_id))
-    raw_items = list(redis.client.lrange(key, 0, -1))
     removed = 0
-    preserved: list[str] = []
-    for raw in raw_items:
-        payload = json.loads(raw)
-        payload_id = _payload_id(payload)
-        if terminal_remove and payload_id in wanted and _web_visible(payload):
-            removed += 1
-            continue
-        preserved.append(
-            raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
-        )
-    if removed:
-        redis.client.delete(key)
-        for raw in preserved:
-            redis.client.rpush(key, raw)
+    if terminal_remove:
+        # LREM is atomic for each payload. Rewriting the whole list lets
+        # concurrent render/lost ACKs restore each other's stale copy.
+        removed = remove_user_notifications(int(user_id), list(wanted))
     return removed

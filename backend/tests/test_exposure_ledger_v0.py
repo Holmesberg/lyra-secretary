@@ -85,6 +85,11 @@ def test_exposure_terminal_classifier_preserves_diagnostic_boundaries():
         has_render=False,
         has_suppression=False,
     )
+    reserved = classify_exposure_terminal_state(
+        decision_status="reserved",
+        has_render=False,
+        has_suppression=False,
+    )
     actionable = classify_exposure_terminal_state(
         decision_status="shown",
         has_render=False,
@@ -110,6 +115,10 @@ def test_exposure_terminal_classifier_preserves_diagnostic_boundaries():
     assert failed.state == "non_actionable_without_render"
     assert failed.has_terminal_event is False
     assert failed.is_actionable_missing_render is False
+
+    assert reserved.state == "non_actionable_without_render"
+    assert reserved.has_terminal_event is False
+    assert reserved.is_actionable_missing_render is False
 
     assert actionable.state == "actionable_missing_render"
     assert actionable.has_terminal_event is False
@@ -289,6 +298,7 @@ def test_legacy_reflection_impression_maps_to_exposure(db):
             event_class="impression",
             payload="You usually overrun development tasks.",
             fired_at=event_time - timedelta(hours=2),
+            viewed_at=event_time - timedelta(hours=2),
         )
     )
     db.commit()
@@ -303,6 +313,34 @@ def test_legacy_reflection_impression_maps_to_exposure(db):
     assert result.state == "EXPOSED"
     assert result.exposure_ids == ["legacy_reflection:legacy-view-1"]
     assert result.exposure_categories == ["behavioral_insight"]
+
+
+def test_unviewed_legacy_reflection_does_not_map_to_exposure(db):
+    _clean(db)
+    user = _user(db)
+    event_time = datetime(2026, 5, 9, 12, 0, 0)
+    db.add(
+        ReflectionViewLog(
+            view_id="legacy-unviewed-1",
+            user_id=user.user_id,
+            reflection_type="micro_mirror",
+            event_class="impression",
+            payload="Candidate never mounted.",
+            fired_at=event_time - timedelta(hours=2),
+            viewed_at=None,
+        )
+    )
+    db.commit()
+
+    result = is_exposed(
+        db,
+        user_id=user.user_id,
+        event_time=event_time,
+        signal_target="duration_behavior",
+    )
+
+    assert result.state == "NONE"
+    assert result.baseline_clean is True
 
 
 def test_legacy_calibration_nudge_acceptance_maps_to_intervention(db):
@@ -441,6 +479,14 @@ def test_bulk_baseline_clean_task_ids_matches_single_row_helper(db):
         created_at=exposed_start,
     )
     db.add_all([clean_task, exposed_task])
+    record_decision(
+        db,
+        user_id=user.user_id,
+        eligible_at=clean_start - timedelta(minutes=30),
+        decision_status="reserved",
+        exposure_category="scheduling_suggestion",
+        content_template_id="academic-pressure-map",
+    )
     decision = record_decision(
         db,
         user_id=user.user_id,

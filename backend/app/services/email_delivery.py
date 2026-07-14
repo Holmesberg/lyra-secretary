@@ -1,6 +1,6 @@
 """Shared outbound email delivery.
 
-All Barzakh email must use the same sender identity. This module is the single
+All LyraOS email must use the same sender identity. This module is the single
 Resend HTTP boundary so future emails do not drift back to provider defaults or
 test senders.
 """
@@ -16,9 +16,9 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-BARZAKH_OUTBOUND_EMAIL = "hello@barzakh.app"
-BARZAKH_FROM_HEADER = f"Barzakh <{BARZAKH_OUTBOUND_EMAIL}>"
-BARZAKH_USER_AGENT = "barzakh-email/1.0"
+LYRAOS_OUTBOUND_EMAIL = "hello@lyraos.org"
+LYRAOS_FROM_HEADER = f"LyraOS <{LYRAOS_OUTBOUND_EMAIL}>"
+LYRAOS_USER_AGENT = "lyraos-email/1.0"
 RESEND_API_URL = "https://api.resend.com/emails"
 RESEND_SUCCESS_STATUSES = {200, 201, 202}
 
@@ -72,14 +72,14 @@ def send_resend_email(
     """Send one email through Resend.
 
     `from` is intentionally not configurable. If the sender ever needs to
-    change, change BARZAKH_OUTBOUND_EMAIL here and update the invariant tests.
+    change, change LYRAOS_OUTBOUND_EMAIL here and update the invariant tests.
     """
     api_key = getattr(settings, "RESEND_API_KEY", "") or ""
     if not api_key:
         return EmailSendResult(status="skipped_unconfigured", sent=False)
 
     payload: dict[str, object] = {
-        "from": BARZAKH_FROM_HEADER,
+        "from": LYRAOS_FROM_HEADER,
         "to": [to],
         "subject": subject,
         "text": text,
@@ -92,7 +92,7 @@ def send_resend_email(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "User-Agent": BARZAKH_USER_AGENT,
+        "User-Agent": LYRAOS_USER_AGENT,
     }
     if idempotency_key:
         headers["Idempotency-Key"] = idempotency_key

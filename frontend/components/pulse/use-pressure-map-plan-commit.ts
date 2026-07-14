@@ -65,6 +65,7 @@ export function usePressureMapPlanCommit({
           return {
             ...row,
             durationMinutes: minutes,
+            suggestedDurationMinutes: minutes,
             endLocal: endLocalFromDuration(row.startLocal, minutes),
             estimateSource: calibrationSource(row, calibration),
           };
@@ -80,6 +81,7 @@ export function usePressureMapPlanCommit({
         return {
           ...current,
           durationMinutes: updated.durationMinutes,
+          suggestedDurationMinutes: updated.suggestedDurationMinutes,
           endLocal: endLocalFromDuration(current.startLocal, updated.durationMinutes),
           category: updated.category,
           estimateSource: updated.estimateSource,

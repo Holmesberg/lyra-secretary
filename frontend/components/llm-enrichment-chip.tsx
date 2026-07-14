@@ -17,13 +17,10 @@
  *     "   ○ None of these"
  *     Each radio is clickable — click binds (or rejects). No separate
  *     Confirm button at this tier; selection IS the action.
- *   Tier 3 — confidence < 0.45 OR no candidates:
- *     If user description had bullets / deadline-token keywords, show
- *     ONE quiet grey line: "Still learning from your patterns."
- *     Otherwise render nothing.
+ *   Tier 3 — score < 0.45 OR no candidates: render nothing.
  *
  * Plus four kill-switch render conditions (return null):
- *   - llm_parse_status not 'enriched' (excl. quiet hint while pending)
+ *   - llm_parse_status is not the deterministic compatibility marker
  *   - llm_binding_rejected_at != null (user said no)
  *   - deadline_match_source NOT IN (null, 'parser_auto') — user owns it
  *   - llm_inferred_deadline_id == task.deadline_id — already bound, no question
@@ -58,18 +55,6 @@ import {
 
 const LLM_TIER1 = 0.85;
 const LLM_TIER2 = 0.45;
-// Bullets / deadline keywords trigger the Tier 3 quiet "still learning"
-// fallback — only when the user clearly expected intelligence.
-// Tested against title + description (2026-04-28): operator pointed out
-// most users won't fill in description, so title-only signals like
-// "BCI paper writeup due Friday" must also light the Tier 3 line.
-const RICH_DESCRIPTION_RE = /(^[\s]*[-*•·]|due\b|deadline\b|by\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today)|\bnext\s+\w+)/im;
-
-function expectsIntelligence(task: { title: string; description: string | null }): boolean {
-  const haystack = `${task.title}\n${task.description ?? ""}`;
-  return RICH_DESCRIPTION_RE.test(haystack);
-}
-
 export interface LlmEnrichmentChipProps {
   task: TaskRow;
   /** Called after a successful confirm/reject so the parent can
@@ -100,112 +85,19 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
   }, [resolved]);
   const [error, setError] = useState<string | null>(null);
 
-  // ── Pending state with no candidate data → "Barzakh is reading…"
-  // When pending but heuristic has pre-populated candidates (operator's
-  // 2026-04-28 instant-tier directive), fall through to render the
-  // chip immediately. The async LLM may refresh candidates later.
+  // Only deterministic candidate data authorizes a suggestion. Provider
+  // status is historical and must not imply that a model is running.
   const hasCandidateData =
     (task.llm_deadline_candidates?.length ?? 0) > 0;
-  if (task.llm_parse_status === "pending" && !hasCandidateData) {
-    return (
-      <div className="text-[10px] text-dust-deep italic">
-        Barzakh is reading this…
-      </div>
-    );
-  }
-
-  // ── Kill-switch conditions — no chip at all
-  // Note: 'pending' status with candidates falls through (handled above)
-  // so the chip can render Tier 1/2/3 from heuristic data while LLM
-  // enrichment is still in flight.
-  const llmAvailable =
-    task.llm_parse_status === "enriched" ||
-    (task.llm_parse_status === "pending" && hasCandidateData);
+  const isDeterministicSuggestion =
+    task.llm_parse_status === "retired" && hasCandidateData;
   if (
-    !llmAvailable ||
+    !isDeterministicSuggestion ||
     task.llm_binding_rejected_at !== null ||
     resolved === "rejected" ||
     resolved === "dismissed"
   ) {
-    // Tier 3 quiet fallback — only when user wrote something rich + LLM
-    // came back empty/low-confidence. Skip if status isn't enriched at
-    // all, since "still learning" implies the LLM ran.
-    if (
-      task.llm_parse_status === "enriched" &&
-      (resolved !== "confirmed") &&
-      expectsIntelligence(task) &&
-      ((task.llm_deadline_match_confidence ?? 0) < LLM_TIER2 ||
-        (task.llm_deadline_candidates?.length ?? 0) === 0) &&
-      task.llm_binding_rejected_at === null &&
-      (task.deadline_match_source === null || task.deadline_match_source === "parser_auto")
-    ) {
-      return (
-        <div className="text-[10px] text-dust-deep italic">
-          Still learning from your patterns.
-        </div>
-      );
-    }
     return null;
-  }
-
-  // Trust-not-rewrite alternative-suggestion path (2026-04-28 Phase 1).
-  // When user/heuristic has bound a deadline AND the LLM enrichment found
-  // a stronger alternative, surface it as a soft "possible better match"
-  // — never silent rewrite. User clicks [Switch] to rebind, [Keep] to
-  // dismiss the suggestion. Trust-positive: explicit choice always.
-  if (
-    task.deadline_match_source !== null &&
-    task.deadline_match_source !== "parser_auto" &&
-    task.llm_alternative_suggestion
-  ) {
-    const alt = task.llm_alternative_suggestion;
-    return (
-      <ChipShell error={error}>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Paperclip className="h-3 w-3 shrink-0" />
-          <span className="text-[11px]">
-            <span className="text-dust">Possible better match: </span>
-            <span className="font-medium text-parchment">{alt.title}</span>
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <ChipBtn
-            kind="primary"
-            label="Switch"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true); setError(null);
-              try {
-                await confirmLlmBinding(task.task_id, {
-                  acceptedFields: ["deadline"],
-                  chosenDeadlineId: alt.deadline_id,
-                });
-                setResolved("confirmed");
-                onChanged?.();
-              } catch (e: unknown) {
-                setError(e instanceof Error ? e.message : "Switch failed");
-              } finally { setBusy(false); }
-            }}
-            icon={<Check className="h-3 w-3" />}
-          />
-          <ChipBtn
-            kind="ghost"
-            label="Keep current"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true); setError(null);
-              try {
-                await rejectLlmBinding(task.task_id);
-                setResolved("rejected");
-                onChanged?.();
-              } catch (e: unknown) {
-                setError(e instanceof Error ? e.message : "Reject failed");
-              } finally { setBusy(false); }
-            }}
-          />
-        </div>
-      </ChipShell>
-    );
   }
 
   // User already owns the binding without an alternative suggestion —
@@ -217,7 +109,7 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
     return null;
   }
 
-  // LLM's top match IS the existing parser_auto binding — no question to ask
+  // Suggested deadline is already bound — no question to ask.
   if (
     task.deadline_id !== null &&
     task.llm_inferred_deadline_id === task.deadline_id
@@ -225,24 +117,11 @@ export function LlmEnrichmentChip({ task, onChanged }: LlmEnrichmentChipProps) {
     return null;
   }
 
-  // No candidates at all → Tier 3 (quiet line if rich description)
   const candidates = task.llm_deadline_candidates ?? [];
   const top = candidates[0] ?? null;
   const topConfidence = top?.confidence ?? 0;
 
-  if (!top || topConfidence < LLM_TIER2) {
-    if (
-      expectsIntelligence(task) &&
-      resolved !== "confirmed"
-    ) {
-      return (
-        <div className="text-[10px] text-dust-deep italic">
-          Still learning from your patterns.
-        </div>
-      );
-    }
-    return null;
-  }
+  if (!top || topConfidence < LLM_TIER2) return null;
 
   // ── Resolved acknowledgment flash
   if (resolved === "confirmed") {

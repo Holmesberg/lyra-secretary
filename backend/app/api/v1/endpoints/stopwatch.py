@@ -33,7 +33,8 @@ from app.db.models import TaskState
 from app.db.scoping import get_current_user_id
 from app.services.output_surfaces import (
     RULE11_SUPPRESSION_REASON,
-    emit_surface_render,
+    create_legacy_surface_view_candidate,
+    create_output_surface_decision,
     emit_surface_suppression,
     rule11_no_nudge_control_active,
     rule11_randomization_fields,
@@ -299,7 +300,7 @@ def stop_stopwatch(
                 )
             return response
 
-        session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct = manager.stop(
+        session, task, is_early_stop, _legacy_external_sync, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct = manager.stop(
             post_task_reflection=request.post_task_reflection,
             task_completion_percentage=request.task_completion_percentage,
             scope_outcome=request.scope_outcome,
@@ -343,24 +344,28 @@ def stop_stopwatch(
                 micro_mirror = None
                 surface_decision_recorded = True
             else:
-                emitted = emit_surface_render(
+                decision = create_output_surface_decision(
                     db,
                     surface_id=surface_id,
                     user_id=user_id,
                     task_id=task.task_id,
-                    content_snapshot=micro_mirror,
+                    decision_status="reserved",
                     content_template_id="micro_mirror",
                     initiative="system",
                     trigger_source="stopwatch.stop",
                     eligible_at=fired_at,
-                    rendered_at=fired_at,
-                    create_legacy_view=True,
-                    legacy_payload=micro_mirror,
                     randomization_arm=arm,
                     randomization_policy_version=policy,
                 )
-                micro_mirror_view_id = emitted["legacy_view_id"]
-                micro_mirror_exposure_id = emitted["exposure_id"]
+                micro_mirror_view_id = create_legacy_surface_view_candidate(
+                    db,
+                    surface_id=surface_id,
+                    user_id=user_id,
+                    task_id=task.task_id,
+                    payload=micro_mirror,
+                    fired_at=fired_at,
+                )
+                micro_mirror_exposure_id = decision.exposure_id
                 surface_decision_recorded = True
         if calibration_nudge:
             surface_id = "stopwatch.calibration_nudge"
@@ -387,24 +392,28 @@ def stop_stopwatch(
                 calibration_nudge = None
                 surface_decision_recorded = True
             else:
-                emitted = emit_surface_render(
+                decision = create_output_surface_decision(
                     db,
                     surface_id=surface_id,
                     user_id=user_id,
                     task_id=task.task_id,
-                    content_snapshot=calibration_nudge,
+                    decision_status="reserved",
                     content_template_id="calibration_nudge",
                     initiative="system",
                     trigger_source="stopwatch.stop",
                     eligible_at=fired_at,
-                    rendered_at=fired_at,
-                    create_legacy_view=True,
-                    legacy_payload=calibration_nudge,
                     randomization_arm=arm,
                     randomization_policy_version=policy,
                 )
-                calibration_nudge_view_id = emitted["legacy_view_id"]
-                calibration_nudge_exposure_id = emitted["exposure_id"]
+                calibration_nudge_view_id = create_legacy_surface_view_candidate(
+                    db,
+                    surface_id=surface_id,
+                    user_id=user_id,
+                    task_id=task.task_id,
+                    payload=calibration_nudge,
+                    fired_at=fired_at,
+                )
+                calibration_nudge_exposure_id = decision.exposure_id
                 surface_decision_recorded = True
         if surface_decision_recorded:
             db.commit()
@@ -417,7 +426,6 @@ def stop_stopwatch(
             delta_minutes=task.duration_delta_minutes,
             executed_at=to_local(task.executed_end_utc or datetime.utcnow()),
             is_early_stop=is_early_stop,
-            notion_synced=notion_synced,
             post_task_reflection=task.post_task_reflection,
             discrepancy_score=task.discrepancy_score,
             paused_parent=paused_parent,
@@ -618,7 +626,7 @@ def retroactive_log(
 
     try:
         manager = TaskManager(db)
-        task, notion_synced = manager.create_retroactive_task(
+        task, _legacy_external_sync = manager.create_retroactive_task(
             title=request.title,
             start_time=request.start_time,
             end_time=request.end_time,
@@ -642,7 +650,6 @@ def retroactive_log(
             pre_task_readiness=task.pre_task_readiness,
             post_task_reflection=task.post_task_reflection,
             discrepancy_score=task.discrepancy_score,
-            notion_synced=notion_synced,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

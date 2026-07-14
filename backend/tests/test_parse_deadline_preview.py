@@ -17,7 +17,14 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app.db.models import Deadline, ExposureDecisionEvent, ExposureRenderEvent, Task, User
+from app.db.models import (
+    Deadline,
+    ExposureAckEvent,
+    ExposureDecisionEvent,
+    ExposureRenderEvent,
+    Task,
+    User,
+)
 from app.db.scoping import set_current_user_id
 from app.main import app
 from tests.conftest import auth_headers
@@ -234,23 +241,100 @@ def test_strong_keyword_match_returns_binding(db):
     assert body["clean_profile"] is None
     assert body["fallback_mode"] == "suppress"
     assert body["exposure_id"]
-    assert body["render_id"]
+    assert "render_id" not in body
+    assert body["render_snapshot"]["deadline_id"] == deadline.deadline_id
 
     decision = (
         db.query(ExposureDecisionEvent)
         .filter(ExposureDecisionEvent.exposure_id == body["exposure_id"])
         .one()
     )
-    render = (
-        db.query(ExposureRenderEvent)
-        .filter(ExposureRenderEvent.render_id == body["render_id"])
-        .one()
-    )
+    assert decision.decision_status == "delivered"
     assert decision.user_id == user.user_id
     assert decision.exposure_category == "scheduling_suggestion"
     assert decision.trigger_source == "parse.deadline_preview"
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == body["exposure_id"])
+        .count()
+        == 0
+    )
+    assert (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == body["exposure_id"])
+        .count()
+        == 0
+    )
+
+    ack_payload = {
+        "surface_id": "task.deadline_binding_suggestion",
+        "client_event_id": f"deadline-preview:{body['exposure_id']}",
+        "content_snapshot": body["render_snapshot"],
+    }
+    first_ack = client.post(
+        f"/v1/exposures/{body['exposure_id']}/ack/render",
+        headers=auth_headers(user.user_id),
+        json=ack_payload,
+    )
+    assert first_ack.status_code == 200, first_ack.text
+    assert first_ack.json()["created"] is True
+    second_ack = client.post(
+        f"/v1/exposures/{body['exposure_id']}/ack/render",
+        headers=auth_headers(user.user_id),
+        json=ack_payload,
+    )
+    assert second_ack.status_code == 200, second_ack.text
+    assert second_ack.json()["created"] is False
+
+    db.refresh(decision)
+    render = (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == body["exposure_id"])
+        .one()
+    )
+    assert decision.decision_status == "rendered"
     assert render.surface == "task.deadline_binding_suggestion"
-    assert "Barzakh thinks this binds to BCI Hackathon" in render.content_snapshot
+    assert "LyraOS thinks this binds to BCI Hackathon" in render.content_snapshot
+
+
+def test_binding_suggestion_render_ack_rejects_cross_user(db):
+    owner = _make_user(db, user_id=77, email="preview-owner@x")
+    other = _make_user(db, user_id=88, email="preview-other@x")
+    _make_deadline(
+        db,
+        owner.user_id,
+        title="BCI Hackathon",
+        description="build the speller backend",
+    )
+    response = client.post(
+        "/v1/parse/deadline-preview",
+        json={"title": "BCI hackathon speller prep"},
+        headers=auth_headers(owner.user_id),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    denied = client.post(
+        f"/v1/exposures/{body['exposure_id']}/ack/render",
+        headers=auth_headers(other.user_id),
+        json={
+            "surface_id": "task.deadline_binding_suggestion",
+            "content_snapshot": body["render_snapshot"],
+        },
+    )
+    assert denied.status_code in {403, 404}
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == body["exposure_id"])
+        .count()
+        == 0
+    )
+    assert (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == body["exposure_id"])
+        .count()
+        == 0
+    )
 
 
 def test_binding_suggestion_suppresses_if_exposure_logging_fails(db, monkeypatch):
@@ -265,7 +349,10 @@ def test_binding_suggestion_suppresses_if_exposure_logging_fails(db, monkeypatch
     def boom(*_args, **_kwargs):
         raise RuntimeError("ledger unavailable")
 
-    monkeypatch.setattr("app.api.v1.endpoints.parse.emit_surface_render", boom)
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.parse.create_output_surface_decision",
+        boom,
+    )
 
     resp = client.post(
         "/v1/parse/deadline-preview",

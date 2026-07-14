@@ -16,7 +16,8 @@ runtime schema expansion.
 Current shipped insight authority is deterministic:
 
 ```text
-analytics math -> EvidencePacket -> ClaimCompiler -> registered output surface
+Admission/Coverage Gate -> analytics math -> EvidencePacket
+-> ClaimCompiler -> registered output surface
 ```
 
 ClaimCompiler may compile only bounded claims from explicit evidence packets.
@@ -35,24 +36,38 @@ into fluent certainty.
 
 ## AI Synthesis Rules If Reopened Later
 
-If AI synthesis is reopened, the preferred reasoning host is OpenClaw running a
-GPT-class synthesis model. This keeps future AI synthesis behind one operator
-reasoning boundary instead of scattering synthesis across parked Jarvis
-compatibility code, frontend components, workers, or ad hoc endpoint code.
+If AI synthesis is reopened, the product-facing reasoning boundary is:
+
+```text
+LyraOS
+-> ReasoningRuntimeContract
+-> OpenClawAdapter
+```
+
+This keeps future AI synthesis behind one explicit runtime contract instead of
+restoring retired Jarvis code or scattering synthesis across frontend
+components, workers, or ad hoc endpoint code.
+
+Future product use, if separately approved, uses per-user
+ReasoningRuntimeContract connection state. LyraOS does not call a model
+provider with an API key and does not store ChatGPT credentials or OAuth
+tokens. Adapter auth profiles must be user-isolated; missing, expired, revoked,
+or quota-exhausted profiles fail closed without direct-API, local-model, or
+shared-account fallback during the prerequisite phase.
 
 This identifies preferred future ownership only. It does not authorize runtime
 AI synthesis, model integration, prompt execution, user-facing draft
-generation, or OpenClaw-to-product wiring.
+generation, or reasoning-adapter-to-product wiring.
 
 The allowed future path is:
 
 ```text
 Cortex clean profile
--> Admission / Coverage Gate
+-> Admission/Coverage Gate
 -> EvidencePacket
--> ClaimCompiler admissibility check
--> OpenClaw/GPT draft synthesis
--> ClaimCompiler / output-surface policy check
+-> ReasoningRuntimeContract
+-> OpenClawAdapter draft synthesis
+-> ClaimCompiler / SurfacePolicy check
 -> registered surface with exposure lifecycle
 ```
 
@@ -76,10 +91,10 @@ AI synthesis must not:
 - mutate task, deadline, timer, provider, notification, exposure, or insight
   state directly.
 
-Admission/Coverage Gate, EvidencePacket, and ClaimCompiler have separate
+The Admission/Coverage Gate, EvidencePacket, and ClaimCompiler have separate
 authority:
 
-- Admission/Coverage Gate decides whether rows are eligible for a claim
+- The Admission/Coverage Gate decides whether rows are eligible for a claim
   computation.
 - EvidencePacket packages eligible evidence for one bounded claim.
 - ClaimCompiler decides whether that bounded claim may emit.
@@ -87,9 +102,14 @@ authority:
 EvidencePacket must not become a hidden second admission gate, and
 ClaimCompiler must not accept packets whose row eligibility is undeclared.
 
-If ClaimCompiler or surface policy rejects an AI draft, OpenClaw may propose a
-new draft from the same evidence packet. That loop must remain an operator or
-system drafting loop, not reinforcement learning over private user behavior.
+If ClaimCompiler or surface policy rejects an AI draft, the reasoning
+runtime may propose a new draft from the same evidence packet. That loop must
+remain an operator or system drafting loop, not reinforcement learning over
+private user behavior.
+
+`EvidenceAdmissionGate` and `OutputClaimCompiler` in non-authorizing concept
+notes are future interface aliases only. They do not create second canonical
+owners.
 
 ## Behavior-Transition Math Boundary
 
@@ -110,7 +130,7 @@ Read this note with:
 
 - `docs/architecture_freeze_priority_hold_2026_05_20.md`;
 - `docs/single_authority_contract.md`;
-- `docs/openclaw_orchestration_contract_v0.md`;
+- `docs/archive/legacy/ai/openclaw_orchestration_contract_v0.md`;
 - `docs/parked/behavior_transition_equation_stack.md`;
 - `docs/parked/uncertainty_reduction_computation_council_2026_06_29.md`;
 - `docs/operator_dashboard_contract.md`.

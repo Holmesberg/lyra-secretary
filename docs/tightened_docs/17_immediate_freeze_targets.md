@@ -8,7 +8,7 @@ until validation/governance catches up.
 | Target | Freeze scope | Reason |
 | --- | --- | --- |
 | `backend/app/api/v1/endpoints/analytics.py` | no new metric families | already mixes endpoint, aggregation, inference, and user-facing insights |
-| `backend/app/services/jarvis_tools.py` | no new behavioral tools without registry owner | high AI-sediment and duplicate-abstraction risk |
+| `backend/app/services/behavioral_signature_aggregate.py` | no new behavioral fields without registry owner | retained historical payload shape can still accumulate semantic drift |
 | `backend/app/services/inference_engine.py` | no new latent labels | valence/disagreement already need validation |
 | `backend/app/services/pause_predictor.py` | no threshold tuning without pre-registration | intervention-sensitive |
 | `backend/app/services/resume_predictor.py` | no threshold tuning without exposure plan | intervention-sensitive |
@@ -47,7 +47,7 @@ until validation/governance catches up.
 - Do not add new user-facing analytics endpoints before clean-data profile
   declaration.
 - Do not add new reflection/telemetry types without schema docs.
-- Do not add non-operator JARVIS access.
+- Do not add non-operator raw behavioral-signature access.
 - Do not add Cortex schema fields in Phase 0.
 - Do not add new required user inputs for research purposes.
 - Do not add new subjective scales, questionnaires, or check-ins before a

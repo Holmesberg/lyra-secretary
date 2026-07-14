@@ -64,7 +64,7 @@ Which validity threats, hard rules, or pre-registrations would the proposed feat
 - `openclaw/skills/lyra-secretary/SKILL.md §Hard Rules`
 - `docs/do_not_add.md` — rejected patterns
 - `docs/design_patterns/notification_patterns.md` — notification principles
-- `docs/phase_6_architecture_backlog.md` — routed/conditional behavior
+- `docs/archive/legacy/planning/phase_6_architecture_backlog.md` — routed/conditional behavior
 
 Ask: "If I ship this, which VT could become load-bearing? Which Hard Rule is in the neighborhood? Which `do_not_add.md` pattern is close enough that I need to actively rule it out?"
 
@@ -149,7 +149,7 @@ These CANNOT skip the rule even if they feel small:
 - `docs/design_patterns/two_stage_destruction.md` — adjacent design-pattern canon
 - `docs/do_not_add.md` — rejected patterns, canonical list of research-relevant fields
 - `MANIFESTO.md §The Validity Register` — where VT candidates land
-- `docs/phase_6_architecture_backlog.md` — routed behavior, signal mapping
+- `docs/archive/legacy/planning/phase_6_architecture_backlog.md` — routed behavior, signal mapping
 
 ---
 

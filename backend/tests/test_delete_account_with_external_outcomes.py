@@ -71,7 +71,7 @@ def _user_exists(user_id: int) -> bool:
         db.close()
 
 
-def test_delete_retention_mode_with_outcome_row():
+def test_delete_retention_mode_with_outcome_row(account_delete_runtime_purge_ok):
     email = "delete-retain-with-outcome@example.com"
     user_id = _make_user_with_outcome(email)
     assert _outcome_count(user_id) == 1
@@ -83,13 +83,14 @@ def test_delete_retention_mode_with_outcome_row():
         headers={"X-User-Id": str(user_id)},
     )
     assert resp.status_code == 200, resp.text
+    assert account_delete_runtime_purge_ok == [user_id]
     assert not _user_exists(user_id)
     # CASCADE purges outcomes — LYR-103 follow-up would anonymize for
     # VT-23 aggregate retention when n is large enough to matter.
     assert _outcome_count(user_id) == 0
 
 
-def test_delete_hard_delete_with_outcome_row():
+def test_delete_hard_delete_with_outcome_row(account_delete_runtime_purge_ok):
     email = "delete-hard-with-outcome@example.com"
     user_id = _make_user_with_outcome(email)
     assert _outcome_count(user_id) == 1
@@ -101,5 +102,6 @@ def test_delete_hard_delete_with_outcome_row():
         headers={"X-User-Id": str(user_id)},
     )
     assert resp.status_code == 200, resp.text
+    assert account_delete_runtime_purge_ok == [user_id]
     assert not _user_exists(user_id)
     assert _outcome_count(user_id) == 0

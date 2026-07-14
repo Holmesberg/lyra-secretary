@@ -6,8 +6,8 @@ banner when paused-for duration approaches the user's historical p75
 for the (category, time_of_day) cell. Cold-start fallback at 30min flat
 cap with synthetic mechanism.
 
-Per-session 5min cooldown — the predictor is meant to nudge once, not
-nag. If user ignores, they ignore.
+Per-session 60-minute cooldown with a two-prompt cap keeps recovery available
+without turning a long pause into hourly nagging.
 
 Best-effort delivery: research row commits first; notification enqueue
 is best-effort (failure logged, row stays committed).
@@ -28,6 +28,11 @@ from app.services.output_surfaces import (
     create_output_surface_decision,
     emit_surface_suppression,
 )
+from app.services.prediction_burden import (
+    acquire_prediction_spacing_window,
+    is_within_prediction_quiet_hours,
+    prediction_family_dismissed_for_session,
+)
 from app.services.resume_predictor import (
     COOLDOWN_MINUTES,
     MAX_FIRES_PER_SESSION,
@@ -45,6 +50,18 @@ def run_resume_prediction():
 
 def _run_for_one_user(db, user: User):
     now = now_utc()
+
+    try:
+        if is_within_prediction_quiet_hours(now, user.timezone):
+            return
+    except ValueError as exc:
+        logger.warning(
+            "resume_prediction: invalid timezone for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
+        return
 
     # Find any active PAUSED tasks for the user.
     paused_tasks = (
@@ -97,6 +114,24 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
     if pause is None:
         return
 
+    try:
+        if prediction_family_dismissed_for_session(
+            db,
+            user_id=user.user_id,
+            family="resume_prediction",
+            session_id=session.session_id,
+        ):
+            return
+    except Exception as exc:  # noqa: BLE001 - burden gates fail closed
+        db.rollback()
+        logger.warning(
+            "resume_prediction: dismissal gate failed for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
+        return
+
     # Cap total fires per session — operator decision 2026-05-01 to
     # stop hourly nagging on sessions the user has clearly abandoned.
     # After MAX_FIRES_PER_SESSION nudges, stay quiet; stale_session_
@@ -119,6 +154,19 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
         elapsed = (now - recent.fired_at).total_seconds() / 60.0
         if elapsed < COOLDOWN_MINUTES:
             return
+
+    try:
+        if not acquire_prediction_spacing_window(db, user.user_id, now):
+            return
+    except Exception as exc:  # noqa: BLE001 - burden gates fail closed
+        db.rollback()
+        logger.warning(
+            "resume_prediction: spacing gate failed for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
+        return
 
     prediction = ResumePredictor(db).predict(
         user_id=user.user_id,
@@ -164,9 +212,8 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
     # Operator fanout (2026-04-30 + 2026-05-01 escalation refinement):
     # message changes with fire-count so the user isn't getting the
     # same "your usual is X" line after they've blown past X by 5×.
-    # Fire 1 is the gentle nudge, fire 2 acknowledges the miss, fire 3
-    # asks if the session should be abandoned. After fire 3 the
-    # MAX_FIRES_PER_SESSION cap above keeps it quiet entirely.
+    # Fire 1 is the gentle nudge and fire 2 acknowledges the miss. The
+    # MAX_FIRES_PER_SESSION cap above keeps it quiet after that.
     if user.is_operator:
         from app.services.operator_notifier import notify_operator
         # fire_count_for_session was the count BEFORE this fire landed,
@@ -178,15 +225,10 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
                 f"You left *{task.title}* paused {paused_min} min ago. "
                 "Pick it back up?"
             )
-        elif fire_n == 2:
+        else:  # fire_n == 2 (final per MAX_FIRES_PER_SESSION cap)
             msg = (
                 f"*{task.title}* is still paused at {paused_min} min. "
-                "Resume where you left off?"
-            )
-        else:  # fire_n == 3 (final per MAX_FIRES_PER_SESSION cap)
-            msg = (
-                f"Last check on *{task.title}* - {paused_min} min paused. "
-                f"I'll stay quiet on this one now."
+                "Resume where you left off? I'll stay quiet after this."
             )
         notify_operator(
             msg,

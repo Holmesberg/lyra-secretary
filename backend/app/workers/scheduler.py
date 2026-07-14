@@ -10,7 +10,6 @@ import logging
 
 from app.services.operator_notifier import format_alert_context, notify_operator
 from app.workers.jobs.reminders import check_upcoming_tasks
-from app.workers.jobs.notion_sync import retry_failed_syncs
 from app.workers.jobs.timer_overflow import check_timer_overflow
 from app.workers.jobs.overdue_tasks import detect_and_skip_overdue_tasks
 from app.workers.jobs.stale_session_recovery import run_stale_session_recovery
@@ -19,7 +18,6 @@ from app.workers.jobs.pause_prediction import run_pause_prediction
 from app.workers.jobs.reconcile_responses import run_reconcile_responses
 from app.workers.jobs.reconcile_deadline_outcomes import run_reconcile_deadline_outcomes
 from app.workers.jobs.sweep_missed_deadlines import run_sweep_missed_deadlines
-from app.workers.jobs.llm_enrichment import run_llm_enrichment
 from app.workers.jobs.resume_prediction import run_resume_prediction
 from app.workers.jobs.moodle_ics_sync import run_moodle_ics_sync
 from app.workers.jobs.moodle_submissions_sync import run_moodle_submissions_sync
@@ -29,11 +27,11 @@ logger = logging.getLogger(__name__)
 # APScheduler default misfire_grace_time is 30s — any job that should
 # have fired more than 30s ago is silently dropped. Operator runs the
 # backend on a laptop that sleeps overnight, which means hours of
-# missed jobs (Moodle sync, Notion retry, etc.) get DROPPED on wake
+# missed jobs (Moodle sync, reminder recovery, etc.) get DROPPED on wake
 # instead of replayed. Audit-flagged 2026-04-30. Setting a global
 # 24h grace via job_defaults so misfired jobs catch up on wake. Each
-# job is internally idempotent (Notion retry queue is queue-based,
-# Moodle sync upserts by external_uid, sweep jobs query current state)
+# job is internally idempotent (Moodle sync upserts by external_uid,
+# sweep jobs query current state)
 # so replaying once on wake is harmless.
 scheduler = BackgroundScheduler(
     job_defaults={"misfire_grace_time": 60 * 60 * 24, "coalesce": True}
@@ -148,15 +146,6 @@ def start_scheduler():
         max_instances=1,
     )
     
-    # Notion sync retry (check every 5 minutes)
-    scheduler.add_job(
-        retry_failed_syncs,
-        trigger=IntervalTrigger(minutes=5),
-        id="notion_sync",
-        name="Retry failed Notion syncs",
-        replace_existing=True
-    )
-
     # Timer overflow (check every 2 minutes)
     scheduler.add_job(
         check_timer_overflow,
@@ -245,21 +234,6 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # Magic-for-alpha — Workstream 1 (2026-04-28). Pulls tasks where
-    # llm_parse_status='pending' and calls the configured LLM for semantic
-    # enrichment (priority, deadline candidates, sub-items). This is
-    # auxiliary: run every 60s, claim one task per tick, and keep
-    # max_instances=1 so provider slowness degrades enrichment rather than
-    # weakening scheduler reliability.
-    scheduler.add_job(
-        run_llm_enrichment,
-        trigger=IntervalTrigger(seconds=60),
-        id="llm_enrichment",
-        name="Magic — LLM async parser; semantic deadline + priority + sub-items",
-        replace_existing=True,
-        max_instances=1,
-    )
-
     # Magic-for-alpha — Workstream 2 (2026-04-28). Sibling of pause_prediction.
     # Runs every 2 minutes for each PAUSED session — when paused-for duration
     # approaches the user's historical p75 for the (category, time_of_day)
@@ -309,7 +283,7 @@ def start_scheduler():
     scheduler.start()
     logger.info("APScheduler started")
     notify_operator(
-        "APScheduler started with Barzakh background jobs loaded.",
+        "APScheduler started with LyraOS background jobs loaded.",
         source="scheduler.health",
         severity="info",
         dedupe_key="scheduler-started",

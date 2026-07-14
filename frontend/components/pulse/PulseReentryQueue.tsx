@@ -2,52 +2,24 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Clock, ExternalLink, RotateCcw, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { CalendarClock, Check, Clock, ExternalLink, RotateCcw, X } from "lucide-react";
 import { ReflectionModal } from "@/components/reflection-modal";
 import {
   getStopwatchStatus,
-  markAbandoned,
-  markDone,
-  resolveStalePause,
-  resumeStopwatch,
-  type ScopeOutcome,
-  switchStopwatch,
   type StopwatchStatus,
   type TaskRow,
 } from "@/lib/tasks";
-import { invalidatePulseReentryCaches, queryKeys } from "@/lib/query-keys";
+import { queryKeys } from "@/lib/query-keys";
+import {
+  usePulseReentryCommands,
+  type PulsePausedReentryCandidate,
+  type PulseReentryCandidate,
+} from "@/lib/hooks/use-pulse-reentry-commands";
 
 interface PulseReentryQueueProps {
   tasks: TaskRow[];
 }
-
-type ReentryCandidate =
-  | {
-      kind: "paused";
-      id: string;
-      title: string;
-      detail: string;
-      taskId: string;
-      sessionId: string;
-      activeMinutes: number;
-      plannedMinutes: number | null;
-      pausedMinutes: number;
-      dateHref: string;
-      action: "resume_current" | "switch_paused" | "resolve_stale";
-      priority: number;
-    }
-  | {
-      kind: "missed";
-      id: string;
-      title: string;
-      detail: string;
-      taskId: string;
-      dateHref: string;
-      canMarkDone: boolean;
-      canDrop: boolean;
-      priority: number;
-    };
 
 function localDateKeyFromIso(iso: string | null | undefined): string {
   const d = iso ? new Date(iso) : new Date();
@@ -57,6 +29,11 @@ function localDateKeyFromIso(iso: string | null | undefined): string {
 
 function todayKey(): string {
   return localDateKeyFromIso(new Date().toISOString());
+}
+
+function taskEditorHref(taskId: string, date: string): string {
+  const params = new URLSearchParams({ date, edit_task: taskId });
+  return `/today?${params.toString()}`;
 }
 
 function formatMinutes(minutes: number | null | undefined): string {
@@ -92,27 +69,19 @@ function missedDetail(task: TaskRow): string {
   return `${planned}${bound} passed without an active session.`;
 }
 
-function looksLikeStaleRecoveryRejection(message: string): boolean {
-  return [
-    "current state:",
-    "already has execution data",
-    "Only overdue tasks",
-    "Cannot mark a voided task done",
-    "Task not found",
-  ].some((needle) => message.includes(needle));
-}
-
 function buildCandidates(
   tasks: TaskRow[],
   status: StopwatchStatus | undefined,
   dismissed: Set<string>
-): ReentryCandidate[] {
+): PulseReentryCandidate[] {
   const now = Date.now();
-  const candidates: ReentryCandidate[] = [];
+  const candidates: PulseReentryCandidate[] = [];
 
   if (status?.active && status.paused && status.task_id && status.task_title) {
     const pausedMinutes = Math.max(0, (status.current_pause_seconds ?? 0) / 60);
-    const dateHref = `/today?date=${todayKey()}`;
+    const task = tasks.find((candidate) => candidate.task_id === status.task_id);
+    const date = localDateKeyFromIso(task?.start ?? task?.end);
+    const dateHref = `/today?date=${date}`;
     const id = `paused:${status.task_id}`;
     if (!dismissed.has(id)) {
       candidates.push({
@@ -126,6 +95,7 @@ function buildCandidates(
         pausedMinutes,
         detail: pausedAgeDetail(pausedMinutes),
         dateHref,
+        rescheduleHref: taskEditorHref(status.task_id, date),
         action:
           pausedMinutes >= STALE_PAUSE_THRESHOLD_MINUTES
             ? "resolve_stale"
@@ -138,6 +108,8 @@ function buildCandidates(
   for (const paused of status?.paused_others ?? []) {
     const id = `paused:${paused.task_id}`;
     if (dismissed.has(id)) continue;
+    const task = tasks.find((candidate) => candidate.task_id === paused.task_id);
+    const date = localDateKeyFromIso(task?.start ?? task?.end);
     candidates.push({
       kind: "paused",
       id,
@@ -148,7 +120,8 @@ function buildCandidates(
       plannedMinutes: paused.planned_duration_minutes ?? null,
       pausedMinutes: paused.paused_minutes,
       detail: pausedAgeDetail(paused.paused_minutes),
-      dateHref: `/today?date=${todayKey()}`,
+      dateHref: `/today?date=${date}`,
+      rescheduleHref: taskEditorHref(paused.task_id, date),
       action:
         paused.paused_minutes >= STALE_PAUSE_THRESHOLD_MINUTES
           ? "resolve_stale"
@@ -172,13 +145,15 @@ function buildCandidates(
     const id = `missed:${task.task_id}`;
     if (dismissed.has(id)) continue;
     const startMs = task.start ? new Date(task.start).getTime() : endMs ?? 0;
+    const taskDate = localDateKeyFromIso(task.start ?? task.end);
     candidates.push({
       kind: "missed",
       id,
       title: task.title,
       taskId: task.task_id,
       detail: missedDetail(task),
-      dateHref: `/today?date=${localDateKeyFromIso(task.start ?? task.end)}`,
+      dateHref: `/today?date=${taskDate}`,
+      rescheduleHref: taskEditorHref(task.task_id, taskDate),
       canMarkDone: !!endMs && endMs < now,
       canDrop: overduePlanned,
       priority: autoSkipped ? 20 - startMs / 1_000_000_000_000 : 10 - startMs / 1_000_000_000_000,
@@ -191,11 +166,10 @@ function buildCandidates(
 }
 
 export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
-  const qc = useQueryClient();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [resolving, setResolving] =
-    useState<Extract<ReentryCandidate, { kind: "paused" }> | null>(null);
+    useState<PulsePausedReentryCandidate | null>(null);
 
   const statusQ = useQuery<StopwatchStatus>({
     queryKey: queryKeys.stopwatchStatus,
@@ -209,92 +183,10 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
     [tasks, statusQ.data, dismissed]
   );
 
-  const refresh = () => {
-    void invalidatePulseReentryCaches(qc);
-  };
-
-  const resumeM = useMutation({
-    mutationFn: (candidate: Extract<ReentryCandidate, { kind: "paused" }>) =>
-      candidate.action === "switch_paused"
-        ? switchStopwatch(candidate.taskId)
-        : resumeStopwatch(),
-    onSuccess: () => {
-      setError(null);
-      refresh();
-    },
-    onError: (e: Error) => setError(e.message ?? "Failed to resume"),
-  });
-
-  const resolveM = useMutation({
-    mutationFn: ({
-      candidate,
-      rating,
-      completionPct,
-      scopeOutcome,
-    }: {
-      candidate: Extract<ReentryCandidate, { kind: "paused" }>;
-      rating: number;
-      completionPct: number;
-      scopeOutcome: ScopeOutcome;
-    }) =>
-      resolveStalePause(candidate.sessionId, {
-        post_task_reflection: rating,
-        task_completion_percentage: completionPct,
-        scope_outcome: scopeOutcome,
-      }),
-    onSuccess: (_data, vars) => {
-      setError(null);
-      setResolving(null);
-      setDismissed((prev) => {
-        const next = new Set(prev);
-        next.add(vars.candidate.id);
-        return next;
-      });
-      refresh();
-    },
-    onError: (e: Error) => setError(e.message ?? "Failed to resolve session"),
-  });
-
-  const doneM = useMutation({
-    mutationFn: (taskId: string) => markDone(taskId),
-    onSuccess: (_data, taskId) => {
-      setError(null);
-      setDismissed((prev) => {
-        const next = new Set(prev);
-        next.add(`missed:${taskId}`);
-        return next;
-      });
-      refresh();
-    },
-    onError: (e: Error, taskId) => {
-      const message = e.message ?? "Failed to mark done";
-      if (looksLikeStaleRecoveryRejection(message)) {
-        setDismissed((prev) => {
-          const next = new Set(prev);
-          next.add(`missed:${taskId}`);
-          return next;
-        });
-        setError(null);
-        refresh();
-        return;
-      }
-      setError(message);
-    },
-  });
-
-  const dropM = useMutation({
-    mutationFn: (taskId: string) =>
-      markAbandoned(taskId, "reentry_recovery_drop_from_pulse"),
-    onSuccess: (_data, taskId) => {
-      setError(null);
-      setDismissed((prev) => {
-        const next = new Set(prev);
-        next.add(`missed:${taskId}`);
-        return next;
-      });
-      refresh();
-    },
-    onError: (e: Error) => setError(e.message ?? "Failed to drop from plan"),
+  const { resumeM, resolveM, doneM, dropM } = usePulseReentryCommands({
+    setDismissed,
+    setError,
+    setResolving,
   });
 
   if (candidates.length === 0) {
@@ -323,11 +215,11 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
         </Link>
       </div>
 
-      <div className="grid gap-2 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-2 lg:grid-cols-3">
         {candidates.map((candidate) => (
           <div
             key={candidate.id}
-            className="rounded-sm border border-hairline bg-void/45 px-3 py-2"
+            className="min-w-0 rounded-sm border border-hairline bg-void/45 px-3 py-2"
           >
             <div className="mb-1.5 flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -413,6 +305,13 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
                 </>
               )}
               <Link
+                href={candidate.rescheduleHref}
+                className="inline-flex items-center gap-1 rounded-sm border border-signal/40 bg-signal/10 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/20 hover:text-signal-neon"
+              >
+                <CalendarClock className="h-3 w-3" />
+                Reschedule
+              </Link>
+              <Link
                 href={candidate.dateHref}
                 className="inline-flex items-center gap-1 rounded-sm border border-hairline bg-void-2/50 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-dust transition-colors hover:border-signal/35 hover:text-parchment"
               >
@@ -455,7 +354,7 @@ export function PulseReentryQueue({ tasks }: PulseReentryQueueProps) {
                   : "not recorded"}.
               </div>
               <div>Paused: {formatMinutes(resolving.pausedMinutes)}.</div>
-              <div>Barzakh will close the session at the time you paused it.</div>
+              <div>LyraOS will close the session at the time you paused it.</div>
             </div>
           }
           onCancel={() => setResolving(null)}

@@ -215,7 +215,8 @@ exist.
 
 1. Characterization tests for golden Cortex outputs.
 2. Dependency DAG enforcement for backend layers.
-3. Central clean-data profile owner.
+3. Central clean-data profile owner. Current owner:
+   `backend/app/services/cortex_clean_profiles.py`.
 4. Unknown-propagation tests.
 5. Evaluation-version stamp checks.
 6. Read-only Cortex static checks.

@@ -312,7 +312,7 @@ See `docs/strategic_decisions_april_14.md` for the four locked decisions from
 the evening session: behavioral correction primary framing, gamification
 refinement via progressive revelation, conflict detection forced override,
 cold-start as legitimate experiment. These are referenced across
-`MANIFESTO.md`, `docs/building_phases.md`, `docs/do_not_add.md`, and
+`MANIFESTO.md`, `docs/archive/legacy/planning/building_phases.md`, `docs/do_not_add.md`, and
 `docs/design_patterns/notification_patterns.md`.
 
 ---
@@ -551,7 +551,7 @@ with integration mapping.*
 > mid-alpha rather than waiting for Phase 6+. The "Do not build
 > mid-experiment" caveat below is overridden by the priority hierarchy
 > (operator's time > users' time > research). Current design lives in
-> `docs/deadline_mechanism_design.md` with pre-registration plan for
+> `docs/archive/legacy/provider_academic/deadline_mechanism_design.md` with pre-registration plan for
 > the soft-warning RCT to mitigate the H1 contamination concern. The
 > historical parked-idea text is preserved below as the original
 > hypothesis statement; treat the design doc as canonical.

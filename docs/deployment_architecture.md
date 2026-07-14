@@ -65,8 +65,8 @@ April notes and should not be used as current production guidance.
 | DNS + Proxy + SSL | Cloudflare (free) | Registrar (lyraos.org), CNAMEs to tunnel UUID, automatic HTTPS |
 | Tunnel | `cloudflared` on operator's laptop | Zero-config ingress without opening any inbound port at home |
 | Frontend | Next.js 15.5.15 | App shell, auth UI, task surfaces, reflection modal, toast stack |
-| Backend | FastAPI + APScheduler in Docker | State machine, scoping, Notion sync, pause prediction, retention signals |
-| Cache / queue | Redis in Docker | Active-stopwatch state, undo cache, idempotency, Notion retry queue |
+| Backend | FastAPI + APScheduler in Docker | State machine, scoping, Moodle/calendar provider evidence, pause prediction, retention signals |
+| Cache / queue | Redis in Docker | Active-stopwatch state, undo cache, idempotency, notification/runtime queues |
 | Primary DB | Supabase Postgres 17.6 (eu-west-1, pooler on :6543, sslmode=require) | Canonical user + task data |
 
 Redis + SQLite fallback both still work — SQLite is kept as `.env.backup-sqlite-2026-04-16` for fast revert if Supabase misbehaves.
@@ -158,6 +158,12 @@ powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1
 node scripts/verify_runtime_topology.mjs --topology public
 ```
 
+The restart fails before stopping the live frontend when the checkout contains
+tracked or untracked changes. Public builds use a per-run staging artifact and
+restore Next.js-managed `tsconfig.json` and `next-env.d.ts` bytes before the
+atomic swap. Any remaining source-tree mutation after the build blocks the
+swap rather than being treated as a successful deployment.
+
 `scripts/restart_public_frontend.ps1` is not a separate restart authority. It
 is kept only as a compatibility wrapper that warns and delegates to
 `scripts/restart_frontend_wsl.ps1`; use `-DryRun` to verify delegation without
@@ -199,6 +205,13 @@ laptop is asleep, wake/login should run the startup watchdog. If not, run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\watch_public_runtime.ps1
+```
+
+For proof-only checks that must not repair services or start runtime helpers,
+use:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\watch_public_runtime.ps1 -ReadOnly
 ```
 
 ## Database separation rationale

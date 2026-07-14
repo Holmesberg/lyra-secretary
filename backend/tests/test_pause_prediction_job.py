@@ -13,9 +13,11 @@
   * Apr 25 product gate: when there is no active task, the job returns
     before invoking the predictor — clock-anchor-only firings without a
     session were noise the user could never confirm via an actual pause.
+  * Quiet hours use the persisted user timezone and fail closed before the
+    predictor or any prediction/exposure write.
   * A predictor exception for one user does not leave partial writes.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -26,7 +28,9 @@ from sqlalchemy import text
 from app.db.models import (
     ExposureDecisionEvent,
     ExposureRenderEvent,
+    NotificationLifecycleEvent,
     PausePredictionLog,
+    ResumePredictionLog,
     StopwatchSession,
     Task,
     TaskState,
@@ -46,6 +50,13 @@ from app.workers.jobs._scheduler_contract import (
 from tests.conftest import TestingSession
 
 USER_ID = 910
+TEST_NOW_UTC = datetime(2026, 7, 15, 12, 0)
+
+
+@pytest.fixture(autouse=True)
+def _stable_worker_clock(monkeypatch):
+    monkeypatch.setattr(pause_prediction, "now_utc", lambda: TEST_NOW_UTC)
+    monkeypatch.setitem(globals(), "now_utc", lambda: TEST_NOW_UTC)
 
 
 @pytest.fixture(autouse=True)
@@ -56,7 +67,9 @@ def _clean_slate(db):
     db.execute(text("DELETE FROM exposure_ack_event"))
     db.execute(text("DELETE FROM exposure_render_event"))
     db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM notification_lifecycle_event"))
     db.execute(text("DELETE FROM exposure_decision_event"))
+    db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
     db.execute(text("DELETE FROM stopwatch_session"))
@@ -69,7 +82,9 @@ def _clean_slate(db):
     db.execute(text("DELETE FROM exposure_ack_event"))
     db.execute(text("DELETE FROM exposure_render_event"))
     db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM notification_lifecycle_event"))
     db.execute(text("DELETE FROM exposure_decision_event"))
+    db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
     db.execute(text("DELETE FROM stopwatch_session"))
@@ -109,6 +124,18 @@ def _make_executing_task(db, user_id: int = USER_ID) -> Task:
         source="manual",
     )
     db.add(t)
+    db.flush()
+    db.add(
+        StopwatchSession(
+            session_id=str(uuid4()),
+            task_id=t.task_id,
+            user_id=user_id,
+            start_time_utc=now - timedelta(minutes=45),
+            end_time_utc=None,
+            auto_closed=False,
+            total_paused_minutes=0,
+        )
+    )
     db.commit()
     db.refresh(t)
     return t
@@ -144,7 +171,10 @@ def _canned_prediction(user_id: int = USER_ID, mechanism: str = "clock_anchor") 
 
 def test_firing_writes_log_row_and_queues_notification(db, user):
     """Happy path: predictor returns -> one row + one queued notification."""
-    _make_executing_task(db)
+    task = _make_executing_task(db)
+    session = db.query(StopwatchSession).filter(
+        StopwatchSession.task_id == task.task_id
+    ).one()
     canned = _canned_prediction()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
@@ -171,6 +201,7 @@ def test_firing_writes_log_row_and_queues_notification(db, user):
     assert call.args[1]["type"] == "pause_prediction"
     assert call.args[1]["firing_id"] == row.firing_id
     assert call.args[1]["surface_id"] == "worker.pause_prediction"
+    assert call.args[1]["session_id"] == session.session_id
     assert call.args[1]["exposure_id"]
     assert call.kwargs["db"] is db
     assert call.kwargs["surface_id"] == "worker.pause_prediction"
@@ -184,6 +215,115 @@ def test_firing_writes_log_row_and_queues_notification(db, user):
     assert decision.decision_status == "queued"
     assert decision.delivered_at is None
     assert db.query(ExposureRenderEvent).count() == 0
+
+
+def test_dismissed_pause_family_silences_current_session(db, user):
+    task = _make_executing_task(db)
+    session = db.query(StopwatchSession).filter(
+        StopwatchSession.task_id == task.task_id
+    ).one()
+    db.add(
+        NotificationLifecycleEvent(
+            user_id=user.user_id,
+            notification_id="dismissed-pause-current-session",
+            channel="web",
+            notification_type="pause_prediction",
+            status="dismissed",
+            session_id=session.session_id,
+            queued_at=TEST_NOW_UTC,
+            rendered_at=TEST_NOW_UTC,
+            dismissed_at=TEST_NOW_UTC,
+            last_transition_at=TEST_NOW_UTC,
+        )
+    )
+    db.commit()
+
+    with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
+         patch("app.workers.jobs.pause_prediction.notify_operator"):
+        mock_cls.return_value.predict.return_value = _canned_prediction()
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert mock_enqueue.call_count == 0
+    assert db.query(PausePredictionLog).count() == 0
+
+
+def test_quiet_hours_skip_pause_prediction_before_any_write(db, user):
+    user.timezone = "Asia/Tokyo"
+    db.commit()
+    _make_executing_task(db)
+
+    with patch(
+        "app.workers.jobs.pause_prediction.now_utc",
+        return_value=datetime(2026, 7, 15, 13, 0),
+    ), patch(
+        "app.workers.jobs.pause_prediction.PausePredictor"
+    ) as mock_cls, patch(
+        "app.workers.jobs.pause_prediction.enqueue_user_notification"
+    ) as mock_enqueue, patch(
+        "app.workers.jobs.pause_prediction.create_output_surface_decision"
+    ) as mock_decision, patch(
+        "app.workers.jobs.pause_prediction.notify_operator"
+    ) as mock_notify:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert mock_enqueue.call_count == 0
+    assert mock_decision.call_count == 0
+    assert mock_notify.call_count == 0
+    assert db.query(PausePredictionLog).count() == 0
+    assert db.query(ExposureDecisionEvent).count() == 0
+
+
+def test_invalid_timezone_fails_closed_for_pause_prediction(db, user):
+    user.timezone = "Not/A-Timezone"
+    db.commit()
+    _make_executing_task(db)
+
+    with patch(
+        "app.workers.jobs.pause_prediction.PausePredictor"
+    ) as mock_cls, patch(
+        "app.workers.jobs.pause_prediction.enqueue_user_notification"
+    ) as mock_enqueue:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert mock_enqueue.call_count == 0
+    assert db.query(PausePredictionLog).count() == 0
+
+
+def test_recent_resume_prediction_blocks_pause_family(db, user):
+    task = _make_executing_task(db)
+    session = db.query(StopwatchSession).filter(
+        StopwatchSession.task_id == task.task_id
+    ).one()
+    db.add(
+        ResumePredictionLog(
+            user_id=user.user_id,
+            session_id=session.session_id,
+            task_id=task.task_id,
+            fired_at=TEST_NOW_UTC - timedelta(minutes=29),
+            paused_for_minutes=35,
+            p75_pause_minutes=None,
+            mechanism="cold_start_synthetic",
+            confidence=0.4,
+            sample_size=0,
+        )
+    )
+    db.commit()
+
+    with patch(
+        "app.workers.jobs.pause_prediction.PausePredictor"
+    ) as mock_cls, patch(
+        "app.workers.jobs.pause_prediction.enqueue_user_notification"
+    ) as mock_enqueue:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert mock_enqueue.call_count == 0
+    assert db.query(PausePredictionLog).count() == 0
+    assert db.query(ResumePredictionLog).count() == 1
 
 
 def test_run_pause_prediction_only_iterates_active_candidates(monkeypatch):
@@ -343,6 +483,24 @@ def test_no_active_task_skips_prediction(db, user):
     assert mock_telegram.call_count == 0
 
 
+def test_executing_task_without_open_session_skips_prediction(db, user):
+    task = _make_executing_task(db)
+    db.query(StopwatchSession).filter(
+        StopwatchSession.task_id == task.task_id
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
+         patch("app.workers.jobs.pause_prediction.notify_operator"):
+        mock_cls.return_value.predict.return_value = _canned_prediction()
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert db.query(PausePredictionLog).count() == 0
+    assert mock_enqueue.call_count == 0
+
+
 def test_cooldown_blocks_refire(db, user):
     """A firing within FIRING_COOLDOWN_MINUTES suppresses the next tick."""
     now = now_utc()
@@ -395,6 +553,71 @@ def test_cooldown_expired_allows_fire(db, user):
         mock_cls.return_value.predict.return_value = _canned_prediction()
         _run_for_one_user(db, user)
 
+    assert db.query(PausePredictionLog).count() == 2
+
+
+def test_active_session_cap_blocks_refire_after_cooldown(db, user):
+    task = _make_executing_task(db)
+    now = now_utc()
+    db.add(
+        PausePredictionLog(
+            user_id=USER_ID,
+            fired_at=now - timedelta(minutes=20),
+            predicted_at=now - timedelta(minutes=18),
+            mechanism="clock_anchor",
+            confidence=0.55,
+            lead_minutes=2,
+            sample_size=5,
+            active_task_id=task.task_id,
+            user_response="no_response",
+            response_at=now - timedelta(minutes=13),
+        )
+    )
+    db.commit()
+
+    with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
+         patch("app.workers.jobs.pause_prediction.notify_operator"):
+        mock_cls.return_value.predict.return_value = _canned_prediction()
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert db.query(PausePredictionLog).count() == 1
+    assert mock_enqueue.call_count == 0
+
+
+def test_new_session_for_same_task_allows_after_shared_spacing(db, user):
+    task = _make_executing_task(db)
+    now = now_utc()
+    open_session = (
+        db.query(StopwatchSession)
+        .filter(StopwatchSession.task_id == task.task_id)
+        .one()
+    )
+    open_session.start_time_utc = now - timedelta(minutes=5)
+    db.add(
+        PausePredictionLog(
+            user_id=USER_ID,
+            fired_at=now - timedelta(minutes=31),
+            predicted_at=now - timedelta(minutes=29),
+            mechanism="clock_anchor",
+            confidence=0.55,
+            lead_minutes=2,
+            sample_size=5,
+            active_task_id=task.task_id,
+            user_response="no_response",
+            response_at=now - timedelta(minutes=24),
+        )
+    )
+    db.commit()
+
+    with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification"), \
+         patch("app.workers.jobs.pause_prediction.notify_operator"):
+        mock_cls.return_value.predict.return_value = _canned_prediction()
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 1
     assert db.query(PausePredictionLog).count() == 2
 
 

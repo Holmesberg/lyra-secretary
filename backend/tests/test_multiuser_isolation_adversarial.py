@@ -722,7 +722,11 @@ def test_exposure_ack_cross_user_blocked_and_audited(adv_users, client):
         check.close()
 
 
-def test_export_and_delete_account_do_not_cross_user_boundaries(adv_users, client):
+def test_export_and_delete_account_do_not_cross_user_boundaries(
+    adv_users,
+    client,
+    account_delete_runtime_purge_ok,
+):
     r98 = _create(client, 98, "eve export only", 210)
     r99 = _create(client, 99, "mallory export only", 215)
     assert r98.status_code == 200 and r99.status_code == 200
@@ -740,6 +744,7 @@ def test_export_and_delete_account_do_not_cross_user_boundaries(adv_users, clien
         headers=_h(99),
     )
     assert delete.status_code == 200, delete.text
+    assert account_delete_runtime_purge_ok == [99]
 
     set_current_user_id(None)
     check = TestingSession()

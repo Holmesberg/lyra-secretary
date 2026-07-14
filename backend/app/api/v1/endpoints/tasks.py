@@ -36,7 +36,6 @@ from app.db.models import Deadline, TaskState
 from app.utils.time_utils import now_utc as _now_utc
 from app.services.task_manager import TaskManager
 from app.services.stopwatch_manager import StopwatchManager, NoActiveStopwatchError
-from app.services.notion_client import NotionClient
 from app.utils.redis_client import RedisClient
 from app.core.exceptions import ImmutableTaskError
 from app.db.models import Task
@@ -86,7 +85,7 @@ def create_task(
     Create a new task.
     
     If conflicts detected and force=False, returns conflicts without creating.
-    If force=True or no conflicts, creates task and syncs to Notion.
+    If force=True or no conflicts, creates task.
     
     Optional: Pass X-Idempotency-Key header to prevent duplicate creates
     within a 30-second window.
@@ -126,7 +125,7 @@ def create_task(
 
         manager = TaskManager(db)
         mutation_attempted = True
-        task, result, notion_synced = manager.create_task(
+        task, result, _legacy_external_sync = manager.create_task(
             title=request.title,
             start=request.start,
             end=request.end,
@@ -173,7 +172,6 @@ def create_task(
             response = TaskCreateResponse(
                 task_id=None,
                 created=False,
-                notion_synced=False,
                 conflicts=conflict_info,
                 # HARD never overridable; SOFT is.
                 can_proceed=(severity == "soft"),
@@ -192,7 +190,6 @@ def create_task(
         response = TaskCreateResponse(
             task_id=task.task_id,
             created=True,
-            notion_synced=notion_synced,
             conflicts=[],
             can_proceed=True,
             severity=None,
@@ -322,25 +319,16 @@ def void_task(
     initiation_status='system_error' for backward compatibility with
     existing analytics filters.
     """
-    task = db.query(Task).filter(Task.task_id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.state == TaskState.DELETED:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot void a DELETED task",
+    try:
+        task, previous_state, previous_status = TaskManager(db).void_task(
+            task_id,
+            voided_reason=request.voided_reason,
+            void_reason_detail=request.void_reason_detail,
         )
-    previous_state = task.state.value if hasattr(task.state, "value") else str(task.state)
-    previous_status = task.initiation_status
-    task.voided_at = _now_utc()
-    task.voided_reason = request.voided_reason
-    task.void_reason_detail = request.void_reason_detail
-    # Preserve legacy EXECUTED→system_error mapping so old analytics
-    # filters that test initiation_status still exclude the row.
-    if task.state == TaskState.EXECUTED:
-        task.initiation_status = "system_error"
-    db.commit()
-    db.refresh(task)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ImmutableTaskError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Close any unclosed stopwatch session bound to this task and clear
     # the user's Redis active/pause keys. Without this, the frontend
@@ -404,10 +392,11 @@ def mark_abandoned(
     default_reason = "user_skipped" if is_planned else "abandoned mid-session"
     try:
         manager = TaskManager(db)
-        task = manager.skip_task(task_id, reason=request.reason or default_reason)
-        task.initiation_status = "user_skipped" if is_planned else "abandoned"
-        db.commit()
-        db.refresh(task)
+        task = manager.skip_task(
+            task_id,
+            reason=request.reason or default_reason,
+            initiation_status="user_skipped" if is_planned else "abandoned",
+        )
     except ImmutableTaskError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -624,33 +613,6 @@ def clear_schedule(
     }
 
 
-@router.post("/tasks/{task_id}/sync")
-def sync_task_to_notion(
-    task_id: str,
-    db: Session = Depends(get_db),
-) -> dict:
-    """
-    Force a Notion sync for a specific task.
-
-    Use to backfill tasks created before the timezone pipeline fix (LYR-015),
-    or to recover tasks that failed to sync due to transient Notion API errors.
-    """
-    task = db.query(Task).filter(Task.task_id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    try:
-        notion = NotionClient()
-        page_id = notion.sync_task(task, db=db)
-        return {
-            "task_id": task_id,
-            "synced": True,
-            "notion_page_id": page_id or task.notion_page_id,
-        }
-    except Exception as e:
-        logger.error(f"Manual Notion sync failed for {task_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=502, detail=f"Notion sync failed: {e}")
-
-
 @router.post("/tasks/{task_id}/llm-confirm", response_model=LlmConfirmResponse)
 def confirm_llm_binding(
     task_id: str,
@@ -658,13 +620,14 @@ def confirm_llm_binding(
     db: Session = Depends(get_db),
     x_idempotency_key: Optional[str] = Header(None),
 ) -> LlmConfirmResponse:
-    """Magic-for-alpha Workstream 1 (2026-04-28). User clicked "keep" or
-    "use this" on the LLM-suggested deadline / priority chip. Copy the
-    selected suggestions into the canonical task fields.
+    """Confirm a deterministic deadline suggestion through a legacy route.
+
+    The route and storage names remain for compatibility. Historical model
+    suggestions are retained for audit/export only and cannot be confirmed.
 
     Tier flow:
       - Tier 1 (confidence ≥ 0.85): chip pre-selected; user clicks
-        "keep" → request.chosen_deadline_id is None → use the LLM's
+        "keep" → request.chosen_deadline_id is None → use the deterministic
         top candidate (task.llm_inferred_deadline_id).
       - Tier 2 (0.45 ≤ confidence < 0.85): user picks one option;
         request.chosen_deadline_id is the picked deadline_id → must
@@ -672,24 +635,31 @@ def confirm_llm_binding(
 
     Guardrail #2: never silently auto-bind. The user must POST here
     for the canonical deadline_id to change. The llm_inferred_*
-    columns persist as audit trail.
+    compatibility columns persist as an audit trail.
 
     Idempotency (P1 stress-test 2026-04-28): pass an X-Idempotency-Key
     header to deduplicate double-taps within a 30-second window. Mirrors
     the existing /create pattern. Without this, a flaky network +
-    eager user double-tap can cause two writes to deadline_match_source
-    interleaving with async LLM enrichment.
+    eager user double-tap can cause duplicate writes.
     """
     current_user_id = get_current_user_id()
     if current_user_id is None:
         raise HTTPException(status_code=401, detail="Authentication required")
 
     redis = RedisClient()
-    task = db.query(Task).filter(Task.task_id == task_id).first()
+    task = db.query(Task).filter(
+        Task.task_id == task_id,
+        Task.user_id == current_user_id,
+    ).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.voided_at is not None:
         raise HTTPException(status_code=400, detail="Cannot modify voided task")
+    if task.llm_parse_status != "retired":
+        raise HTTPException(
+            status_code=409,
+            detail="Historical model suggestions are retained for audit only",
+        )
     if x_idempotency_key:
         cached = redis.check_idempotency(
             f"llm_confirm:{task_id}:{x_idempotency_key}",
@@ -706,8 +676,8 @@ def confirm_llm_binding(
     priority_set = False
 
     if "deadline" in request.accepted_fields:
-        # Resolve which deadline_id to commit. Either the user's pick
-        # (Tier 2) or the LLM's top suggestion (Tier 1).
+        # Resolve which deadline_id to commit: the user's pick or the top
+        # deterministic suggestion.
         target_deadline_id = (
             request.chosen_deadline_id
             if request.chosen_deadline_id is not None
@@ -722,7 +692,7 @@ def confirm_llm_binding(
         # OR matches the top candidate (Tier 1) OR matches the alternative
         # suggestion (trust-not-rewrite Switch path, 2026-04-28). Defensive
         # — prevents a malicious / stale frontend from binding to a
-        # deadline the LLM never proposed.
+        # deadline the deterministic scorer never proposed.
         candidates = task.llm_deadline_candidates or []
         alt = task.llm_alternative_suggestion or {}
         in_candidates = any(c.get("deadline_id") == target_deadline_id for c in candidates)
@@ -758,10 +728,9 @@ def confirm_llm_binding(
         if confidence is None and in_alt:
             confidence = alt.get("confidence")
         task.deadline_match_confidence = confidence
-        # Switch path uses 'user_corrected' (operator's override priority
-        # list — user actively switched after seeing both); Tier 1/2 keep
-        # the existing 'llm_auto_confirmed'.
-        task.deadline_match_source = "user_corrected" if in_alt else "llm_auto_confirmed"
+        # A switch is a correction; ordinary acceptance is explicit user
+        # confirmation. Candidate-level heuristic provenance remains stored.
+        task.deadline_match_source = "user_corrected" if in_alt else "heuristic_confirmed"
         # Clear the alternative now that the user resolved it
         task.llm_alternative_suggestion = None
         # Auto-transition the deadline to active if currently planned
@@ -803,36 +772,45 @@ def reject_llm_binding(
     task_id: str,
     db: Session = Depends(get_db),
 ) -> LlmRejectResponse:
-    """User clicked 'Not relevant' / 'None of these' on the binding chip.
+    """Reject a current deterministic suggestion through a legacy route.
 
     Records the rejection (`llm_binding_rejected_at = now()`) so the chip
     stops rendering. Then, source-aware unbind:
 
-      - If this is a trust-not-rewrite alternative suggestion
-        ("Possible better match") and the user clicks "Keep current",
-        clear only the alternative suggestion. The current canonical
-        binding is exactly what the user chose to keep.
-      - Otherwise, if `deadline_match_source` is system-auto —
-        `heuristic_*`, `llm_auto_confirmed`, or legacy `parser_auto` —
+      - If this is an alternative suggestion, preserve the current canonical
+        binding and record only the rejection outcome.
+      - Otherwise, if `deadline_match_source` is system-auto or a confirmed
+        deterministic suggestion,
         also clear `task.deadline_id` and reset `task.deadline_match_source`
         to NULL. The user is rejecting a binding the SYSTEM made, so
         "Not relevant" must actually unbind.
       - If source is `user_explicit` or `manual_user`, leave the
-        binding alone — user owns it; the chip rejection only stops
-        the LLM suggestion from re-appearing.
+        binding alone — user owns it; rejection only suppresses the suggestion.
 
     Bug fix 2026-05-01 (operator: "I clicked no deadline, still
     binded"): prior version only set the rejection flag and left
     deadline_id intact for ALL sources, so heuristic-auto bindings
     quietly persisted after explicit user rejection.
 
-    `llm_inferred_*` fields stay populated (audit trail) so future
+    Legacy-named candidate fields stay populated as audit evidence so future
     analysis can join llm_inferred_deadline_id × llm_binding_rejected_at
     × deadline_match_source for precision/recall by binding origin.
     """
-    task = db.query(Task).filter(Task.task_id == task_id).first()
+    current_user_id = get_current_user_id()
+    if current_user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    task = db.query(Task).filter(
+        Task.task_id == task_id,
+        Task.user_id == current_user_id,
+    ).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.llm_parse_status != "retired":
+        raise HTTPException(
+            status_code=409,
+            detail="Historical model suggestions are retained for audit only",
+        )
     rejected_at = _now_utc()
     task.llm_binding_rejected_at = rejected_at
 
@@ -848,23 +826,17 @@ def reject_llm_binding(
         "heuristic_startswith",
         "heuristic_substring",
         "heuristic_alias",
+        "heuristic_confirmed",
         "llm_auto_confirmed",
         "parser_auto",
     }
-    if rejecting_alternative_only:
-        task.llm_alternative_suggestion = None
-    elif src in SYSTEM_AUTO_SOURCES:
+    if not rejecting_alternative_only and src in SYSTEM_AUTO_SOURCES:
         task.deadline_id = None
         task.deadline_match_source = None
         task.deadline_match_confidence = None
 
-    # The user resolved the current chip, so stale suggestion payloads
-    # should not keep rendering or look like live intelligence.
-    task.llm_inferred_deadline_id = None
-    task.llm_deadline_match_confidence = None
-    task.llm_deadline_candidates = None
-    if not rejecting_alternative_only:
-        task.llm_alternative_suggestion = None
+    # `llm_binding_rejected_at` suppresses the UI. Preserve candidate payloads
+    # as provenance so dismissal and correction metrics remain reconstructible.
 
     db.commit()
     try:

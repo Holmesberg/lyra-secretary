@@ -150,7 +150,11 @@ try {
 
   $json = $proof | ConvertTo-Json -Depth 12
   if (-not [string]::IsNullOrWhiteSpace($OutFile)) {
-    $outPath = Join-Path $repoRoot $OutFile
+    $outPath = if ([System.IO.Path]::IsPathRooted($OutFile)) {
+      $OutFile
+    } else {
+      Join-Path $repoRoot $OutFile
+    }
     $outParent = Split-Path -Parent $outPath
     if (-not [string]::IsNullOrWhiteSpace($outParent)) {
       New-Item -ItemType Directory -Force -Path $outParent | Out-Null

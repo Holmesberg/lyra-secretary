@@ -9,6 +9,8 @@ import json
 from datetime import datetime, timedelta
 from uuid import uuid4
 
+import pytest
+
 from app.db.models import (
     CalibrationNudgeEvent,
     Deadline,
@@ -352,7 +354,10 @@ def _count_exposure_rows(model, exposure_id: str) -> int:
         db.close()
 
 
-def test_delete_retention_mode_purges_modern_auxiliary_rows(client):
+def test_delete_retention_mode_purges_modern_auxiliary_rows(
+    client,
+    account_delete_runtime_purge_ok,
+):
     email = "delete-retain-modern-aux@example.com"
     ids = _seed_user_with_modern_auxiliary_rows(email)
     user_id = int(ids["user_id"])
@@ -365,6 +370,7 @@ def test_delete_retention_mode_purges_modern_auxiliary_rows(client):
     )
 
     assert resp.status_code == 200, resp.text
+    assert account_delete_runtime_purge_ok == [user_id]
     assert _count_user_rows(User, user_id) == 0
 
     db = TestingSession()
@@ -474,7 +480,10 @@ def test_export_registry_includes_user_owned_sections_and_redacts_secrets(client
     assert "authtoken=" not in encoded
 
 
-def test_delete_hard_mode_purges_modern_auxiliary_rows(client):
+def test_delete_hard_mode_purges_modern_auxiliary_rows(
+    client,
+    account_delete_runtime_purge_ok,
+):
     email = "delete-hard-modern-aux@example.com"
     ids = _seed_user_with_modern_auxiliary_rows(email)
     user_id = int(ids["user_id"])
@@ -487,6 +496,7 @@ def test_delete_hard_mode_purges_modern_auxiliary_rows(client):
     )
 
     assert resp.status_code == 200, resp.text
+    assert account_delete_runtime_purge_ok == [user_id]
     for model in (
         User,
         Task,
@@ -540,3 +550,74 @@ def test_delete_account_invokes_runtime_state_purge(client, monkeypatch):
     assert resp.status_code == 200, resp.text
     assert resp.json()["runtime_state_purged"] is True
     assert calls == [user_id]
+
+
+@pytest.mark.parametrize("retain_for_research", [False, True])
+def test_delete_account_runtime_purge_failure_preserves_account(
+    client,
+    monkeypatch,
+    retain_for_research,
+):
+    email = f"delete-runtime-failure-{retain_for_research}@example.com"
+    ids = _seed_user_with_modern_auxiliary_rows(email)
+    user_id = int(ids["user_id"])
+    calls: list[int] = []
+
+    class FailingRedisClient:
+        def purge_user_runtime_state(self, uid):
+            calls.append(int(uid))
+            raise ConnectionError("test Redis unavailable")
+
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.users.RedisClient",
+        lambda: FailingRedisClient(),
+    )
+
+    resp = client.request(
+        "DELETE",
+        "/v1/users/me",
+        json={
+            "confirm_email": email,
+            "retain_for_research": retain_for_research,
+        },
+        headers=auth_headers(user_id),
+    )
+
+    assert resp.status_code == 503, resp.text
+    assert resp.json()["detail"] == (
+        "Account deletion could not safely clear runtime state. "
+        "Nothing was deleted; try again."
+    )
+    assert calls == [user_id]
+    assert _count_user_rows(User, user_id) == 1
+    assert _count_user_rows(Task, user_id) == 1
+    assert _count_user_rows(StopwatchSession, user_id) == 1
+    assert _count_user_rows(Deadline, user_id) == 1
+
+    export_resp = client.get(
+        "/v1/users/me/export",
+        headers=auth_headers(user_id),
+    )
+    assert export_resp.status_code == 200, export_resp.text
+    assert any(
+        row["task_id"] == ids["task_id"]
+        for row in export_resp.json()["tasks"]
+    )
+
+    db = TestingSession()
+    try:
+        failure = (
+            db.query(SecurityAuditEvent)
+            .filter(
+                SecurityAuditEvent.user_id == user_id,
+                SecurityAuditEvent.event_type == "account_delete_failed",
+            )
+            .one()
+        )
+        assert failure.status == "failed"
+        assert failure.redacted_metadata == {
+            "phase": "runtime_purge_precondition",
+            "retain_for_research": retain_for_research,
+        }
+    finally:
+        db.close()

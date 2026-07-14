@@ -1,6 +1,6 @@
 """Tier 0 deterministic deadline-suggestion heuristic (2026-04-28).
 
-Sibling of the LLM enrichment path. Runs synchronously inside POST
+Runs synchronously inside POST
 /v1/create with sub-10ms latency. When confident, populates
 `task.llm_deadline_candidates` immediately so the user sees a candidate
 the moment the task lands on /today.
@@ -36,8 +36,8 @@ Rule 14 stratification stays sharp):
   - 'heuristic_alias'         (reserved — for future user-defined alias
                                table; not populated yet)
 
-Override priority (chip + LLM worker respect this order):
-    manual_user > heuristic_exact_title > llm_auto_confirmed >
+Historical override priority (retained for stored lineage):
+    manual_user > heuristic_exact_title > heuristic_confirmed >
     user_corrected > heuristic_startswith > heuristic_substring >
     parser_auto > null
 

@@ -1,5 +1,5 @@
 param(
-    [string]$ShortcutName = "Barzakh Public Runtime Watchdog"
+    [string]$ShortcutName = "LyraOS Public Runtime Watchdog"
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,7 +25,7 @@ $shortcut.TargetPath = $powershell
 $shortcut.Arguments = $arguments
 $shortcut.WorkingDirectory = $repoRoot
 $shortcut.WindowStyle = 7
-$shortcut.Description = "Starts and repairs Barzakh public runtime at Windows logon."
+$shortcut.Description = "Starts and repairs LyraOS public runtime at Windows logon."
 $shortcut.Save()
 
 Write-Host "Installed startup shortcut: $shortcutPath"

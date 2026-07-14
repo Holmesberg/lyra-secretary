@@ -1,6 +1,10 @@
 # 03 Ontology Registry
 
-**Purpose:** Canonical names, aliases, layer ownership, and status.
+**Status:** Historical audit snapshot from 2026-05-08. Current authority lives
+in `docs/AUTHORITY.md`, active contracts, and registered runtime owners.
+
+**Purpose:** Preserve the audited names, aliases, layer ownership, and status
+as they existed at review time.
 
 ## Registry
 
@@ -37,7 +41,7 @@
 | Recovery latency | `recovery_latency` | pause recovery | operator tooling | derived | minutes | `jarvis_tools.py`, pause/resume data | operator-only, not fully surfaced |
 | Reflection exposure | `reflection_impression` | reflection view | exposure | observed intervention | event | `ReflectionViewLog` | active partial exposure ledger |
 | Calibration nudge | `calibration_nudge_event` | creation nudge, stop nudge | exposure/intervention | intervention record | event | `CalibrationNudgeEvent`, `ReflectionViewLog` | active, contamination-sensitive |
-| LLM enrichment | `llm_enrichment` | semantic parser | integration/inference | inferred suggestion | JSON/status | `llm_parser.py`, task `llm_*` fields | active assistant signal; not canonical truth |
+| Retired model enrichment | `llm_enrichment` | semantic parser | historical integration | inferred suggestion | JSON/status | task `llm_*` fields, migrations 036/039 | retired; columns retained for lineage/export/delete only |
 | JARVIS hypothesis | `jarvis_hypothesis_proposal` | pattern hypothesis | operator tooling | speculative | structured proposal | `jarvis_tools.py`, `JarvisInvocation` | operator-only |
 
 ## Lineage Findings

@@ -20,7 +20,6 @@ const SOURCE_META: Record<
 > = {
   moodle: { label: "Moodle", monogram: "Mo", color: "ember" },
   google_calendar: { label: "Google Cal", monogram: "GC", color: "signal" },
-  notion: { label: "Notion", monogram: "N", color: "dust" },
   ics: { label: "ICS", monogram: "iC", color: "dust" },
 };
 
@@ -38,8 +37,7 @@ export function PulseIntegrationsV2({ integrations }: PulseIntegrationsV2Props) 
     const order: Record<string, number> = {
       moodle: 0,
       google_calendar: 1,
-      notion: 2,
-      ics: 3,
+      ics: 2,
     };
     return (order[a.id] ?? 99) - (order[b.id] ?? 99);
   });
@@ -79,7 +77,8 @@ export function PulseIntegrationsV2({ integrations }: PulseIntegrationsV2Props) 
           return (
             <li
               key={it.id}
-              className="flex items-center gap-3 rounded-sm border border-hairline bg-void-2/40 px-3 py-2"
+              data-testid={`pulse-integration-${it.id}`}
+              className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-x-3 rounded-sm border border-hairline bg-void-2/40 px-3 py-2"
             >
               <div
                 className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-sm font-mono text-[10px] font-semibold ${
@@ -92,31 +91,40 @@ export function PulseIntegrationsV2({ integrations }: PulseIntegrationsV2Props) 
               >
                 {meta.monogram}
               </div>
-              <div className="min-w-0 flex-1 leading-tight">
+              <div className="min-w-0 leading-tight">
                 <div className="flex items-center gap-2">
-                  <span className="text-[12px] text-parchment">{meta.label}</span>
+                  <span
+                    data-testid={`pulse-integration-${it.id}-label`}
+                    className="min-w-0 break-words text-[12px] text-parchment"
+                  >
+                    {meta.label}
+                  </span>
                   <span
                     aria-hidden
-                    className="status-dot"
+                    className="status-dot shrink-0"
                     style={{ ["--dot-color" as string]: dotColor }}
                   />
                 </div>
-                <div className="font-mono text-[9px] text-dust-deep">
+                <div
+                  data-testid={`pulse-integration-${it.id}-status`}
+                  className="mt-1 break-words font-mono text-[9px] leading-4 text-dust-deep"
+                >
                   {reconnect
                     ? "reconnect needed"
                     : connected
                       ? fmtSynced(it.last_synced_at)
                       : "not connected"}
                 </div>
+                {!connected && (
+                  <Link
+                    href="/settings"
+                    data-testid={`pulse-integration-${it.id}-action`}
+                    className="mt-1 inline-flex min-h-6 items-center font-mono text-[9px] uppercase tracking-widest text-signal/85 transition-colors hover:text-signal-neon focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal"
+                  >
+                    {reconnect ? "Reconnect" : "Connect"} →
+                  </Link>
+                )}
               </div>
-              {!connected && (
-                <Link
-                  href="/settings"
-                  className="shrink-0 font-mono text-[9px] uppercase tracking-widest text-signal/85 hover:text-signal-neon"
-                >
-                  Connect →
-                </Link>
-              )}
             </li>
           );
         })}

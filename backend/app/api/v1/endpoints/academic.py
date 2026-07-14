@@ -1,6 +1,6 @@
 """Academic execution-intelligence endpoints.
 
-V1 exposes a read-only pressure map from existing Barzakh primitives. It
+V1 exposes a read-only pressure map from existing LyraOS primitives. It
 does not create tasks, mutate calendars, or persist academic content.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,10 +11,11 @@ from app.db.scoping import get_current_user_id
 from app.schemas.academic import AcademicPressureMapResponse
 from app.services.academic_pressure import build_pressure_map
 from app.services.output_surfaces import (
-    emit_surface_render,
+    create_output_surface_decision,
     get_output_surface_spec,
 )
 from app.core.authority import authority_for_surface
+from app.utils.time_utils import now_utc
 
 router = APIRouter()
 
@@ -36,6 +37,7 @@ def _pressure_map_exposure_snapshot(
     context, so provider-derived titles/details do not become durable exhaust.
     """
     source_summary = payload.source_summary
+    projection = payload.demand_coverage_projection
     authority = authority_for_surface(
         get_output_surface_spec("academic.pressure_map")
     ).as_dict()
@@ -62,6 +64,35 @@ def _pressure_map_exposure_snapshot(
         "coverage_question_count": len(payload.coverage_questions),
         "estimated_low_minutes": payload.estimated_low_minutes,
         "estimated_high_minutes": payload.estimated_high_minutes,
+        "demand_coverage_projection": {
+            "schema_version": projection.schema_version,
+            "projection_status": projection.projection_status,
+            "capacity_status": projection.capacity_status,
+            "collision_state": projection.collision_state,
+            "obligation_count": projection.obligation_count,
+            "scenario_count": projection.scenario_count,
+            "total_estimate": projection.total_estimate.model_dump(),
+            "completed_scope_credit": (
+                projection.completed_scope_credit.model_dump()
+            ),
+            "remaining_demand": projection.remaining_demand.model_dump(),
+            "feasible_future_coverage": (
+                projection.feasible_future_coverage.model_dump()
+            ),
+            "applied_coverage": projection.applied_coverage.model_dump(),
+            "unscheduled_demand": projection.unscheduled_demand.model_dump(),
+            "overcoverage": projection.overcoverage.model_dump(),
+            "unlinked_planning_context": {
+                "status": projection.unlinked_planning_context.status,
+                "task_count": projection.unlinked_planning_context.task_count,
+                "union_minutes": (
+                    projection.unlinked_planning_context.union_minutes
+                ),
+            },
+            "inconsistent_obligation_count": len(
+                projection.inconsistent_obligation_ids
+            ),
+        },
         "source_summary": {
             "deadlines_total": source_summary.deadlines_total,
             "external_obligation_count": source_summary.external_obligation_count,
@@ -72,6 +103,9 @@ def _pressure_map_exposure_snapshot(
             "study_task_minutes": source_summary.study_task_minutes,
             "google_calendar_connected": (
                 source_summary.google_calendar_connected
+            ),
+            "google_calendar_read_status": (
+                source_summary.google_calendar_read_status
             ),
             "calendar_busy_minutes": source_summary.calendar_busy_minutes,
             "planned_lyra_minutes": source_summary.planned_lyra_minutes,
@@ -100,11 +134,17 @@ def get_academic_pressure_map(
         raise HTTPException(status_code=401, detail="not authenticated")
 
     try:
-        emitted = emit_surface_render(
+        surface_id = "academic.pressure_map"
+        spec = get_output_surface_spec(surface_id)
+        authority = authority_for_surface(spec).as_dict()
+        render_snapshot = _pressure_map_exposure_snapshot(payload)
+        eligible_at = now_utc()
+        decision = create_output_surface_decision(
             db,
-            surface_id="academic.pressure_map",
+            surface_id=surface_id,
             user_id=uid,
-            content_snapshot=_pressure_map_exposure_snapshot(payload),
+            decision_status="reserved",
+            eligible_at=eligible_at,
             content_template_id="academic_pressure_map",
             initiative="system",
             trigger_source="academic.pressure_map",
@@ -119,18 +159,13 @@ def get_academic_pressure_map(
 
     return payload.model_copy(
         update={
-            "surface_id": emitted["surface_id"],
-            "truth_class": emitted["truth_class"],
-            "signal_targets": emitted["signal_targets"],
-            "clean_profile": emitted["clean_profile"],
-            "fallback_mode": emitted["fallback_mode"],
-            "authority_rung": emitted["authority_rung"],
-            "mutation_permission": emitted["mutation_permission"],
-            "public_translator": emitted["public_translator"],
-            "surface_role": emitted.get("surface_role"),
-            "allowed_authority": emitted.get("allowed_authority", []),
-            "denied_authority": emitted.get("denied_authority", []),
-            "exposure_id": emitted["exposure_id"],
-            "render_id": emitted["render_id"],
+            "surface_id": surface_id,
+            "truth_class": spec.truth_class,
+            "signal_targets": list(spec.signal_targets),
+            "clean_profile": spec.clean_profile,
+            "fallback_mode": spec.fallback_mode,
+            **authority,
+            "exposure_id": decision.exposure_id,
+            "render_snapshot": render_snapshot,
         }
     )

@@ -41,6 +41,7 @@ DEFAULT_JWT_SECRET = "dev-only-replace-me-with-32-byte-urlsafe-secret"
 MIN_RUNTIME_JWT_SECRET_LENGTH = 32
 PRODUCTION_ENVIRONMENTS = {"production", "prod"}
 JWT_DECODE_CLOCK_SKEW_SECONDS = 10
+LEGACY_PLACEHOLDER_GOOGLE_IDS = {"simulated-google-sub"}
 
 
 def runtime_requires_strong_jwt_secret() -> bool:
@@ -53,7 +54,7 @@ def runtime_requires_strong_jwt_secret() -> bool:
     env = (settings.ENVIRONMENT or "").strip().lower()
     frontend_url = (settings.FRONTEND_URL or "").strip().rstrip("/").lower()
     return env in PRODUCTION_ENVIRONMENTS or frontend_url in {
-        "https://barzakh.app",
+        "https://lyraos.org",
         "https://lyraos.org",
     }
 
@@ -197,8 +198,15 @@ def resolve_user_from_token(token: str) -> User:
                     )
         else:
             changed = False
-            if google_id and user.google_id is None:
-                # Backfill google_id on the operator's existing row at first login
+            if (
+                google_id
+                and google_id != user.google_id
+                and (
+                    user.google_id is None
+                    or user.google_id in LEGACY_PLACEHOLDER_GOOGLE_IDS
+                )
+            ):
+                # Backfill google_id on pre-OAuth rows or known legacy fixtures.
                 user.google_id = google_id
                 changed = True
             if google_display_name and user.google_display_name != google_display_name:

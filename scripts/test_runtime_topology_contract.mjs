@@ -7,6 +7,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const contract = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "runtime_topology.json"), "utf8")
 );
+const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+const multiAccountWrapper = read("scripts/run_multi_account_browser_smoke.ps1");
+const operatorWrapper = read("scripts/run_operator_readonly_browser_stress.ps1");
+const calendarTableWrapper = read("scripts/run_calendar_table_mutation_dogfood.ps1");
 
 function assert(condition, message) {
   if (!condition) {
@@ -37,5 +41,39 @@ for (const origin of contract.declared_browser_origins) {
     `unexpected declared browser origin: ${origin}`
   );
 }
+
+for (const [name, wrapper] of [
+  ["multi-account", multiAccountWrapper],
+  ["operator read-only", operatorWrapper],
+  ["Calendar/Table mutation", calendarTableWrapper],
+]) {
+  assert(
+    wrapper.includes("[int]$LocalCurrentApiPort = 8000"),
+    `${name} wrapper must expose an explicit local-current API port`,
+  );
+  assert(
+    wrapper.includes('$env:LYRA_API_ORIGIN = "http://localhost:$LocalCurrentApiPort"'),
+    `${name} wrapper must route local-current proof to the selected API port`,
+  );
+  assert(
+    wrapper.includes('"--api", $env:LYRA_API_ORIGIN'),
+    `${name} wrapper must pass the selected API origin into topology verification`,
+  );
+}
+
+assert(
+  calendarTableWrapper.includes("[switch]$FixtureAccountReady")
+    && calendarTableWrapper.includes('$args += "--fixture-account-ready"'),
+  "Calendar/Table wrapper must carry explicit local account-readiness fixture state into browser proof",
+);
+assert(
+  calendarTableWrapper.includes("[switch]$CalendarOnly")
+    && calendarTableWrapper.includes('$args += @("--calendar-only")'),
+  "Calendar/Table wrapper must expose a focused Calendar-only debugging tier",
+);
+assert(
+  calendarTableWrapper.includes('if ($Topology -ne "local-current")'),
+  "Calendar/Table account-readiness fixture must remain local-current only",
+);
 
 console.log(JSON.stringify({ ok: true, checked: "runtime_topology_contract" }));

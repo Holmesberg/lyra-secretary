@@ -10,12 +10,53 @@ param(
 
   [switch]$CleanupOnly,
 
+  [switch]$AssumeLocalFrontendReady,
+
+  [switch]$AllowPublicFrontendArtifactMutation,
+
   [int]$LocalCurrentPort = 3013,
 
-  [switch]$ProxyApi
+  [int]$LocalCurrentApiPort = 8000,
+
+  [switch]$ProxyApi,
+
+  [switch]$FixtureAccountReady,
+
+  [switch]$ForcePressureRecovery,
+
+  [switch]$PressureProofOnly,
+
+  [switch]$PressureCalendarPartialProofOnly,
+
+  [switch]$CaptureProofOnly,
+
+  [switch]$OnboardingPartialRecoveryProofOnly,
+
+  [switch]$OnboardingSkipProofOnly,
+
+  [switch]$TodayStopwatchOutputProofOnly,
+
+  [switch]$PulseStopwatchOutputProofOnly,
+
+  [switch]$ZeroDurationStopProofOnly,
+
+  [ValidateSet("both", "pulse", "today")]
+  [string]$ZeroDurationStopRoute = "both",
+
+  [switch]$TodayStopRollbackProofOnly,
+
+  [switch]$TodayVoidSettlementProofOnly,
+
+  [switch]$PulsePartialErrorProofOnly,
+
+  [switch]$PulseIntegrationsLayoutProofOnly,
+
+  [switch]$TimerSwitchProofOnly
 )
 
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "local_frontend_topology.ps1")
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Push-Location $repoRoot
@@ -45,11 +86,26 @@ try {
     $env:LYRA_API_ORIGIN = "https://api.lyraos.org"
   } elseif ($Topology -eq "local-current") {
     $env:LYRA_FRONTEND_ORIGIN = "http://localhost:$LocalCurrentPort"
-    $env:LYRA_API_ORIGIN = "http://localhost:8000"
+    $env:LYRA_API_ORIGIN = "http://localhost:$LocalCurrentApiPort"
     $env:NEXTAUTH_URL = $env:LYRA_FRONTEND_ORIGIN
   } else {
     $env:LYRA_FRONTEND_ORIGIN = "http://localhost:3000"
     $env:LYRA_API_ORIGIN = "http://localhost:8000"
+  }
+
+  Write-Host "Holmesberg product-loop dogfood"
+  Write-Host "Topology: $Topology"
+  Write-Host "Frontend: $env:LYRA_FRONTEND_ORIGIN"
+  Write-Host "API: $env:LYRA_API_ORIGIN"
+  Write-Host "Proxy API: $useProxyApi"
+  Write-Host ""
+
+  if ($Topology -eq "local" -and -not $AssumeLocalFrontendReady) {
+    $port = 3000
+    Ensure-LocalFrontendDev `
+      -Reason "Holmesberg product-loop local topology proof" `
+      -Port $port `
+      -AllowPublicFrontendArtifactMutation:$AllowPublicFrontendArtifactMutation
   }
 
   & powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check_browser_cookie_env.ps1 -Account holmesberg
@@ -61,6 +117,27 @@ try {
     throw "Operator cookie check failed."
   }
 
+  node scripts\test_browser_auth_helpers.mjs
+  if ($LASTEXITCODE -ne 0) {
+    throw "browser auth helper self-test failed with exit code $LASTEXITCODE."
+  }
+
+  $topologyArgs = @("scripts\verify_runtime_topology.mjs", "--topology", $Topology)
+  if ($Topology -eq "local-current") {
+    $topologyArgs += @(
+      "--frontend", $env:LYRA_FRONTEND_ORIGIN,
+      "--api", $env:LYRA_API_ORIGIN,
+      "--nextauth", $env:LYRA_FRONTEND_ORIGIN
+    )
+    if ($useProxyApi) {
+      $topologyArgs += "--proxy-api"
+    }
+  }
+  node @topologyArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "runtime topology verifier failed with exit code $LASTEXITCODE."
+  }
+
   $args = @(
     "scripts\browser_holmesberg_product_loop_dogfood.mjs",
     "--topology", $Topology,
@@ -69,6 +146,9 @@ try {
   )
   if ($useProxyApi) {
     $args += "--proxy-api"
+  }
+  if ([bool]$FixtureAccountReady) {
+    $args += "--fixture-account-ready"
   }
   if (-not [string]::IsNullOrWhiteSpace($RunId)) {
     $args += @("--run-id", $RunId)
@@ -81,6 +161,51 @@ try {
   }
   if ([bool]$CleanupOnly) {
     $args += @("--cleanup-only")
+  }
+  if ([bool]$ForcePressureRecovery) {
+    $args += @("--force-pressure-recovery", "true")
+  }
+  if ([bool]$PressureProofOnly) {
+    $args += "--pressure-proof-only"
+  }
+  if ([bool]$PressureCalendarPartialProofOnly) {
+    $args += "--pressure-calendar-partial-proof-only"
+  }
+  if ([bool]$CaptureProofOnly) {
+    $args += "--capture-proof-only"
+  }
+  if ([bool]$OnboardingPartialRecoveryProofOnly) {
+    $args += "--onboarding-partial-recovery-proof-only"
+  }
+  if ([bool]$OnboardingSkipProofOnly) {
+    $args += "--onboarding-skip-proof-only"
+  }
+  if ([bool]$TodayStopwatchOutputProofOnly) {
+    $args += "--stopwatch-output-proof-only"
+  }
+  if ([bool]$PulseStopwatchOutputProofOnly) {
+    $args += "--pulse-stopwatch-output-proof-only"
+  }
+  if ([bool]$ZeroDurationStopProofOnly) {
+    $args += @(
+      "--zero-duration-stop-proof-only",
+      "--zero-duration-stop-route", $ZeroDurationStopRoute
+    )
+  }
+  if ([bool]$TodayStopRollbackProofOnly) {
+    $args += "--today-stop-rollback-proof-only"
+  }
+  if ([bool]$TodayVoidSettlementProofOnly) {
+    $args += "--today-void-settlement-proof-only"
+  }
+  if ([bool]$PulsePartialErrorProofOnly) {
+    $args += "--pulse-partial-error-proof-only"
+  }
+  if ([bool]$PulseIntegrationsLayoutProofOnly) {
+    $args += "--pulse-integrations-layout-proof-only"
+  }
+  if ([bool]$TimerSwitchProofOnly) {
+    $args += "--timer-switch-proof-only"
   }
 
   node @args

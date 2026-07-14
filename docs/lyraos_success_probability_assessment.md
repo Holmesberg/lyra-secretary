@@ -13,7 +13,7 @@ Related docs:
 
 - `docs/product_research_assumption_register.md`
 - `docs/research_optionality_and_friction_methodology.md`
-- `docs/core_product_loop_wave_plan.md`
+- `docs/archive/legacy/planning/core_product_loop_wave_plan.md`
 - `docs/measurement_integrity_before_agency_claims.md`
 - `docs/lyrasim_pressure_ambiguity_roadmap.md`
 

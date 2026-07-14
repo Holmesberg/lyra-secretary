@@ -2,6 +2,7 @@ param(
   [ValidateSet("public", "local", "local-current")]
   [string]$Topology = "public",
   [int]$LocalCurrentPort = 3013,
+  [int]$LocalCurrentApiPort = 8000,
   [switch]$ProxyApi
 )
 
@@ -32,7 +33,7 @@ if ($Topology -eq "public") {
   $env:LYRA_API_ORIGIN = "https://api.lyraos.org"
 } elseif ($Topology -eq "local-current") {
   $env:LYRA_FRONTEND_ORIGIN = "http://localhost:$LocalCurrentPort"
-  $env:LYRA_API_ORIGIN = "http://localhost:8000"
+  $env:LYRA_API_ORIGIN = "http://localhost:$LocalCurrentApiPort"
   $env:NEXTAUTH_URL = $env:LYRA_FRONTEND_ORIGIN
 } else {
   $env:LYRA_FRONTEND_ORIGIN = "http://localhost:3000"

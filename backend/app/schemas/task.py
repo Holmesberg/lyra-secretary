@@ -39,10 +39,10 @@ class TaskCreateRequest(BaseModel):
     # CalibrationNudgeEvent row in the same transaction as the task.
     nudge_decision: Optional[Literal["accepted", "dismissed"]] = Field(
         None,
-        description="'accepted' (used Barzakh's suggestion) or 'dismissed' (kept typed duration)",
+        description="'accepted' (used LyraOS's suggestion) or 'dismissed' (kept typed duration)",
     )
     nudge_suggested_duration_minutes: Optional[int] = Field(
-        None, ge=1, le=480, description="What Barzakh suggested at nudge-fire time"
+        None, ge=1, le=480, description="What LyraOS suggested at nudge-fire time"
     )
     nudge_bias_factor: Optional[float] = Field(
         None, ge=0.1, le=10.0, description="bias_factor used to compute the suggestion"
@@ -94,9 +94,8 @@ class TaskRescheduleRequest(BaseModel):
     category: Optional[str] = Field(None, max_length=100)
     # Edit-modal parity (2026-04-28): description + deadline_id were
     # write-only via /v1/create; the edit modal could not change them.
-    # Now reschedule accepts both. When description changes,
-    # llm_parse_status is reset to 'pending' so the enrichment worker
-    # re-runs against the new text. deadline_id binding mirrors /create:
+    # Now reschedule accepts both. Deterministic deadline suggestions refresh
+    # when task text changes. deadline_id binding mirrors /create:
     # validates ownership + bindable state, sets deadline_match_source
     # to 'user_explicit'.
     description: Optional[str] = Field(None, max_length=2000)
@@ -183,7 +182,6 @@ class TaskCreateResponse(BaseModel):
     """
     task_id: Optional[str]
     created: bool
-    notion_synced: bool = False
     conflicts: list[ConflictInfo] = Field(default_factory=list)
     can_proceed: bool = True
     severity: Optional[str] = None
@@ -403,26 +401,24 @@ class SwapResponse(BaseModel):
 
 
 class LlmConfirmRequest(BaseModel):
-    """User clicked "keep" or "use this" on the LLM-suggested chip
-    (Workstream 1, magic-for-alpha). Copies LLM-suggested fields into
-    the canonical task fields per the operator-locked guardrail #2 —
-    the user must explicitly accept; we never silently auto-bind.
+    """Confirm a deterministic deadline suggestion through a legacy schema.
 
-    `accepted_fields` is the subset of LLM suggestions to commit:
-      - 'deadline'   — copy llm_inferred_deadline_id → deadline_id
-                       (sets deadline_match_source='llm_auto_confirmed')
-      - 'priority'   — copy llm_priority → priority (when priority col ships)
+    The user must explicitly accept; the system never silently binds. A
+    confirmed deterministic suggestion records `heuristic_confirmed` while
+    the candidate payload retains the scorer-specific source.
+    `accepted_fields` currently supports the legacy `deadline` field. The
+    historical priority field has no canonical mutation target.
 
-    `chosen_deadline_id` overrides the LLM's top candidate when the user
-    picks a different one from the Tier 2 multi-option chip.
+    `chosen_deadline_id` overrides the top deterministic candidate when the
+    user picks another option from the suggestion list.
     """
     accepted_fields: list[str] = Field(default_factory=list)
     chosen_deadline_id: Optional[str] = Field(
         None,
         description=(
-            "Override for the LLM's top candidate. When None (Tier 1 flow), "
-            "uses task.llm_inferred_deadline_id. When set (Tier 2 flow), "
-            "uses this explicit value — must be in llm_deadline_candidates."
+            "Override for the top deterministic candidate. When None, uses "
+            "task.llm_inferred_deadline_id. When set, the value must be in "
+            "the stored deterministic candidate list."
         ),
     )
 
@@ -435,9 +431,7 @@ class LlmConfirmResponse(BaseModel):
 
 
 class LlmRejectRequest(BaseModel):
-    """User explicitly clicked 'no, just keep mine' on the LLM chip.
-    Records the rejection (audit) and clears the LLM suggestion so the
-    chip stops rendering."""
+    """Record rejection of a legacy-named deterministic suggestion."""
     pass
 
 

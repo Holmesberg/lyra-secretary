@@ -4,7 +4,7 @@ Path B read-only integration — imports the user's primary Google
 Calendar events as ambient scheduling context. Events are NEVER
 persisted to the `task` table; they're fetched on demand via Redis
 cache. The /calendar UI renders them as read-only grey background
-blocks alongside Barzakh tasks.
+blocks alongside LyraOS tasks.
 
 Research-integrity note: imported events must NOT enter the H1 test
 set. The separation is natural-by-design: events live only in the
@@ -27,7 +27,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 # How long the Redis-cached event list stays fresh per (user, window).
 # Operator's spec framed GCal as "instant" — 60s is the practical
 # compromise: the user doesn't hit Google's API on every /calendar
-# mount, but a new event added to GCal appears in Barzakh within a minute.
+# mount, but a new event added to GCal appears in LyraOS within a minute.
 CACHE_TTL_SECONDS = 60
 # How long a refreshed Google access_token stays cached in Redis. Google
 # tokens expire at 60 min; we cache for 45 to avoid the expiry edge.
@@ -71,6 +71,15 @@ class ExternalEvent:
     end: str
     calendar_id: str
     source: str = "google"
+
+
+@dataclass
+class ExternalEventFetchResult:
+    """Events plus read availability without claiming provider completeness."""
+
+    events: list[ExternalEvent]
+    status: Literal["available", "partial", "unavailable", "not_connected"]
+    reason: str | None = None
 
 
 def _access_token_cache_key(user_id: int) -> str:
@@ -150,7 +159,7 @@ def _get_credentials(user: User, db=None) -> Optional[Credentials]:
                         scope=redacted_user_ref(user.user_id),
                         retry=(
                             "Calendar context returns empty for this request; "
-                            "Barzakh retries when calendar context is requested again."
+                            "LyraOS retries when calendar context is requested again."
                         ),
                         user_action=(
                             "Reconnect Calendar only if the failure persists."
@@ -175,10 +184,10 @@ def _get_credentials(user: User, db=None) -> Optional[Credentials]:
     return creds
 
 
-def fetch_google_events(
+def fetch_google_events_with_status(
     user_id: int, date_from: datetime, date_to: datetime
-) -> list[ExternalEvent]:
-    """Return this user's Google Calendar events in the window.
+) -> ExternalEventFetchResult:
+    """Return events and whether the requested window was readable.
 
     Cached in Redis for CACHE_TTL_SECONDS. On cache miss, calls
     events.list against the user's primary calendar with
@@ -191,7 +200,27 @@ def fetch_google_events(
     if cached:
         try:
             payload = json.loads(cached)
-            return [ExternalEvent(**e) for e in payload]
+            if isinstance(payload, list):
+                events_payload = payload
+                status = "available"
+                reason = None
+            elif (
+                isinstance(payload, dict)
+                and payload.get("schema_version") == "gcal_events_cache_v2"
+                and isinstance(payload.get("events"), list)
+            ):
+                events_payload = payload["events"]
+                status = payload.get("status")
+                reason = payload.get("reason")
+                if status not in {"available", "partial"}:
+                    raise ValueError("unsupported cached calendar read status")
+            else:
+                raise ValueError("unsupported cached calendar payload")
+            return ExternalEventFetchResult(
+                events=[ExternalEvent(**e) for e in events_payload],
+                status=status,
+                reason=reason,
+            )
         except Exception as e:
             # Cache poisoning shouldn't bubble up — log and re-fetch.
             logger.warning("gcal: cache parse failed, re-fetching: %s", e)
@@ -200,10 +229,21 @@ def fetch_google_events(
     try:
         user = db.query(User).filter(User.user_id == user_id).first()
         if user is None:
-            return []
+            return ExternalEventFetchResult(
+                events=[], status="unavailable", reason="user_not_found"
+            )
+        was_connected = bool(user.google_refresh_token)
         creds = _get_credentials(user, db)
         if creds is None:
-            return []
+            return ExternalEventFetchResult(
+                events=[],
+                status="unavailable" if was_connected else "not_connected",
+                reason=(
+                    "credentials_unavailable"
+                    if was_connected
+                    else "not_connected"
+                ),
+            )
 
         try:
             service = build("calendar", "v3", credentials=creds, cache_discovery=False)
@@ -235,7 +275,7 @@ def fetch_google_events(
                 db.commit()
                 if user.is_operator:
                     notify_operator(
-                        "Google Calendar returned 401, so Barzakh cleared the "
+                        "Google Calendar returned 401, so LyraOS cleared the "
                         "stored refresh token. Reconnect Calendar in Settings.\n\n"
                         + format_alert_context(
                             affected="Google Calendar / availability read",
@@ -266,7 +306,7 @@ def fetch_google_events(
                             scope=redacted_user_ref(user_id),
                             retry=(
                                 "Calendar context returns empty for this "
-                                "request; Barzakh retries when calendar context "
+                                "request; LyraOS retries when calendar context "
                                 "is requested again."
                             ),
                             user_action=(
@@ -283,7 +323,11 @@ def fetch_google_events(
                         dedupe_key=f"gcal-http:{user_id}:{e.resp.status}",
                         cooldown_seconds=60 * 60,
                     )
-            return []
+            return ExternalEventFetchResult(
+                events=[],
+                status="unavailable",
+                reason=f"provider_http_{e.resp.status}",
+            )
         except Exception as e:
             logger.warning("gcal: events.list failed for user %s: %s", user_id, e)
             if user.is_operator:
@@ -295,7 +339,7 @@ def fetch_google_events(
                         scope=redacted_user_ref(user_id),
                         retry=(
                             "Calendar context returns empty for this request; "
-                            "Barzakh retries when calendar context is requested again."
+                            "LyraOS retries when calendar context is requested again."
                         ),
                         user_action=(
                             "No user action unless the provider failure persists."
@@ -310,15 +354,23 @@ def fetch_google_events(
                     dedupe_key=f"gcal-events-failed:{user_id}:{type(e).__name__}",
                     cooldown_seconds=60 * 60,
                 )
-            return []
+            return ExternalEventFetchResult(
+                events=[],
+                status="unavailable",
+                reason=f"provider_{type(e).__name__}",
+            )
 
         events: list[ExternalEvent] = []
+        partial_reasons: set[str] = set()
+        if response.get("nextPageToken"):
+            partial_reasons.add("pagination_truncated")
         for item in response.get("items", []):
             # Skip all-day events (no time data — can't place on a
             # scheduled view).
             start = item.get("start", {})
             end = item.get("end", {})
             if "dateTime" not in start or "dateTime" not in end:
+                partial_reasons.add("all_day_events_excluded")
                 continue
 
             # Skip events the user has declined. Self-organized events
@@ -335,6 +387,11 @@ def fetch_google_events(
                 end_dt = datetime.fromisoformat(end["dateTime"].replace("Z", "+00:00"))
             except ValueError:
                 logger.warning("gcal: could not parse event times: %s", item.get("id"))
+                partial_reasons.add("invalid_event_times")
+                continue
+            if end_dt <= start_dt:
+                logger.warning("gcal: non-positive event interval: %s", item.get("id"))
+                partial_reasons.add("invalid_event_times")
                 continue
 
             events.append(
@@ -347,15 +404,37 @@ def fetch_google_events(
                 )
             )
 
-        # Cache the serialized list.
+        status = "partial" if partial_reasons else "available"
+        reason = ",".join(sorted(partial_reasons)) or None
+        # Preserve coverage status through cache while accepting legacy lists
+        # on read for compatibility with already-cached event windows.
         redis.setex(
             _events_cache_key(user_id, date_from_key, date_to_key),
             CACHE_TTL_SECONDS,
-            json.dumps([e.__dict__ for e in events]),
+            json.dumps(
+                {
+                    "schema_version": "gcal_events_cache_v2",
+                    "events": [e.__dict__ for e in events],
+                    "status": status,
+                    "reason": reason,
+                }
+            ),
         )
-        return events
+        return ExternalEventFetchResult(
+            events=events,
+            status=status,
+            reason=reason,
+        )
     finally:
         db.close()
+
+
+def fetch_google_events(
+    user_id: int, date_from: datetime, date_to: datetime
+) -> list[ExternalEvent]:
+    """Compatibility reader for existing Calendar consumers."""
+
+    return fetch_google_events_with_status(user_id, date_from, date_to).events
 
 
 def store_refresh_token(user_id: int, refresh_token: str) -> None:

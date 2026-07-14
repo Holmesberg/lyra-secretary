@@ -2,7 +2,7 @@
 
 Mirrors the read-only integration pattern of `services/calendar_sync.py`
 (Path B Apr 21) but with ONE crucial divergence: imported events are
-*persisted* as Barzakh `Deadline` rows (with `external_source='moodle_ics'`
+*persisted* as LyraOS `Deadline` rows (with `external_source='moodle_ics'`
 flagged), not held ephemeral in Redis. This is because Moodle assignments
 ARE the deadlines a student wants to organize their semester around —
 they're the wedge, not ambient context.
@@ -106,7 +106,7 @@ def _widen_time_window(url: str) -> str:
     Why: Moodle's calendar exporter defaults to preset_time=recentupcoming
     which clips events to roughly [now-14d, now+60d]. Assignments due
     earlier than 14 days ago drop out of the feed entirely, so any
-    overdue work the user wants to triage is silently invisible to Barzakh.
+    overdue work the user wants to triage is silently invisible to LyraOS.
 
     Operator complaint 2026-05-01 morning: 'overdue tasks were submitted
     yesterday and they weren't synced.' Root cause was this filter, not

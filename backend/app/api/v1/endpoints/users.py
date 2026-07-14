@@ -1,12 +1,13 @@
 """User account endpoints (Phase 2): /me, consent, export, data-summary, hard delete."""
 import hashlib
+import json
 import logging
 from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -33,7 +34,11 @@ from app.services.user_data_registry import (
     hard_delete_retained_rows,
     purge_user_auxiliary_rows,
 )
-from app.utils.me_cache import get_cached_me, invalidate_me, set_cached_me
+from app.utils.me_cache import (
+    get_cached_me_with_epoch,
+    invalidate_me,
+    set_cached_me_if_epoch,
+)
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc, strip_tz
 
@@ -70,6 +75,19 @@ BUILT_IN_CATEGORIES = [
 router = APIRouter()
 
 
+def _cached_survey_response(
+    redis: RedisClient,
+    key: str,
+    user_id: int,
+) -> Optional[ArchetypeAssignmentOut]:
+    cached = redis.check_idempotency(key, user_id=user_id)
+    if cached is None:
+        return None
+    if redis.is_idempotency_pending(cached):
+        raise HTTPException(status_code=409, detail="idempotency_in_progress")
+    return ArchetypeAssignmentOut(**json.loads(cached))
+
+
 def _current_user(db: Session) -> User:
     return authenticated_user_from_scope(db)
 
@@ -88,7 +106,7 @@ def get_me(db: Session = Depends(get_db)):
     # below (d1_return_at, onboarding backfill) are one-time stamps so
     # missing them on cache hits is harmless — the next miss after the
     # 30s window handles the next eligible call.
-    cached = get_cached_me(user.user_id)
+    cached, cache_epoch = get_cached_me_with_epoch(user.user_id)
     if cached is not None:
         return cached
     # Grandfathered-user backfill (2026-04-28 hotfix): re-enabling the
@@ -154,7 +172,10 @@ def get_me(db: Session = Depends(get_db)):
     latest_assignment = (
         db.query(ArchetypeAssignment)
         .filter(ArchetypeAssignment.user_id == user.user_id)
-        .order_by(ArchetypeAssignment.assigned_at.desc())
+        .order_by(
+            ArchetypeAssignment.assigned_at.desc(),
+            ArchetypeAssignment.assignment_id.desc(),
+        )
         .first()
     )
     has_assignment = latest_assignment is not None
@@ -201,7 +222,6 @@ def get_me(db: Session = Depends(get_db)):
         "google_display_name": user.google_display_name,
         "timezone": user.timezone,
         "is_operator": user.is_operator,
-        "notion_enabled": user.notion_enabled,
         "archetype_id": user.archetype_id,
         "archetype_survey_eligible": archetype_survey_eligible,
         "archetype_assignment_completed": bool(
@@ -240,7 +260,7 @@ def get_me(db: Session = Depends(get_db)):
         "google_calendar_connected": user.google_refresh_token is not None,
         "created_at": user.created_at.isoformat(),
     }
-    set_cached_me(user.user_id, payload)
+    set_cached_me_if_epoch(user.user_id, payload, cache_epoch)
     return payload
 
 
@@ -294,7 +314,7 @@ def delete_google_refresh_token(
 
     Does NOT revoke the token with Google; user must also visit
     myaccount.google.com/permissions to fully revoke. This endpoint
-    just clears Barzakh's copy so the sync stops.
+    just clears LyraOS's copy so the sync stops.
     """
     user = _current_user(db)
     user.google_refresh_token = None
@@ -316,7 +336,9 @@ def delete_google_refresh_token(
 
 @router.post("/users/me/archetype/survey", response_model=ArchetypeAssignmentOut)
 def submit_archetype_survey(
-    body: ArchetypeSurveyIn, db: Session = Depends(get_db)
+    body: ArchetypeSurveyIn,
+    db: Session = Depends(get_db),
+    x_idempotency_key: Optional[str] = Header(None),
 ) -> ArchetypeAssignmentOut:
     """Score the 29-item battery and write an ArchetypeAssignment.
 
@@ -327,55 +349,123 @@ def submit_archetype_survey(
     29-item responses in `raw_responses` for future re-scoring under
     Gate 3/4 weight tuning.
 
-    Idempotent by user: if the user already has an assignment, a new
-    row is added and User.archetype_id updates to the latest. The
-    historical row stays (enables longitudinal study of how archetype
-    assignment drifts across retakes).
+    A user-scoped X-Idempotency-Key makes transport retries return the
+    original response without writing a duplicate assignment. A deliberate
+    retake uses a new key, appends a new row, and updates User.archetype_id;
+    historical rows remain available for longitudinal comparison.
     """
     user = _current_user(db)
 
-    meq_score, chronotype = score_meq(body.meq)
-    bfi_c_score, _ = score_bfi_c(body.bfi_c)
-    bscs_score, _ = score_bscs(body.bscs)
-    gp_score, _ = score_gp(body.gp)
-    discipline_z = compute_discipline_z(bfi_c_score, bscs_score, gp_score)
-    discipline = classify_discipline(discipline_z)
-    archetype_id = assign_archetype(chronotype, discipline)
+    idempotency_key = (
+        f"archetype:survey:{x_idempotency_key.strip()}"
+        if x_idempotency_key and x_idempotency_key.strip()
+        else None
+    )
+    idempotency_cache: Optional[RedisClient] = None
+    idempotency_reserved = False
+    if idempotency_key is not None:
+        try:
+            idempotency_cache = RedisClient()
+            cached = _cached_survey_response(
+                idempotency_cache,
+                idempotency_key,
+                user.user_id,
+            )
+            if cached is not None:
+                return cached
+            idempotency_reserved = idempotency_cache.reserve_idempotency(
+                idempotency_key,
+                ttl_seconds=60,
+                user_id=user.user_id,
+            )
+            if not idempotency_reserved:
+                cached = _cached_survey_response(
+                    idempotency_cache,
+                    idempotency_key,
+                    user.user_id,
+                )
+                if cached is not None:
+                    return cached
+                raise HTTPException(
+                    status_code=409,
+                    detail="idempotency_in_progress",
+                )
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("survey idempotency unavailable: %s", exc)
+            raise HTTPException(
+                status_code=503,
+                detail="survey_submission_temporarily_unavailable",
+            ) from exc
 
-    assignment = ArchetypeAssignment(
-        user_id=user.user_id,
+    try:
+        meq_score, chronotype = score_meq(body.meq)
+        bfi_c_score, _ = score_bfi_c(body.bfi_c)
+        bscs_score, _ = score_bscs(body.bscs)
+        gp_score, _ = score_gp(body.gp)
+        discipline_z = compute_discipline_z(bfi_c_score, bscs_score, gp_score)
+        discipline = classify_discipline(discipline_z)
+        archetype_id = assign_archetype(chronotype, discipline)
+
+        assignment = ArchetypeAssignment(
+            user_id=user.user_id,
+            archetype_id=archetype_id,
+            meq_score=meq_score,
+            bfi_c_score=bfi_c_score,
+            bscs_score=bscs_score,
+            gp_score=gp_score,
+            chronotype=chronotype,
+            discipline_z=round(discipline_z, 3),
+            assigned_at=datetime.utcnow(),
+            completed=True,
+            skipped_at=None,
+            raw_responses={
+                "meq": body.meq,
+                "bfi_c": body.bfi_c,
+                "bscs": body.bscs,
+                "gp": body.gp,
+            },
+        )
+        db.add(assignment)
+        user.archetype_id = archetype_id
+        db.commit()
+    except Exception:
+        db.rollback()
+        if (
+            idempotency_cache is not None
+            and idempotency_key is not None
+            and idempotency_reserved
+        ):
+            idempotency_cache.clear_idempotency(
+                idempotency_key,
+                user_id=user.user_id,
+            )
+        raise
+
+    response = ArchetypeAssignmentOut(
         archetype_id=archetype_id,
+        completed=True,
+        chronotype=chronotype,
+        discipline_z=round(discipline_z, 3),
         meq_score=meq_score,
         bfi_c_score=bfi_c_score,
         bscs_score=bscs_score,
         gp_score=gp_score,
-        chronotype=chronotype,
-        discipline_z=round(discipline_z, 3),
-        assigned_at=datetime.utcnow(),
-        completed=True,
-        skipped_at=None,
-        raw_responses={
-            "meq": body.meq,
-            "bfi_c": body.bfi_c,
-            "bscs": body.bscs,
-            "gp": body.gp,
-        },
     )
-    db.add(assignment)
-    user.archetype_id = archetype_id
-    db.commit()
+    if idempotency_cache is not None and idempotency_key is not None:
+        try:
+            idempotency_cache.set_idempotency(
+                idempotency_key,
+                response.model_dump_json(),
+                ttl_seconds=60,
+                user_id=user.user_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("survey idempotency store unavailable: %s", exc)
     invalidate_me(user.user_id)  # archetype_id, archetype_*_at flip
 
-    return ArchetypeAssignmentOut(
-        archetype_id=archetype_id,
-        completed=True,
-        chronotype=chronotype,
-        discipline_z=round(discipline_z, 3),
-        meq_score=meq_score,
-        bfi_c_score=bfi_c_score,
-        bscs_score=bscs_score,
-        gp_score=gp_score,
-    )
+    return response
 
 
 @router.post("/users/me/archetype/skip", response_model=ArchetypeAssignmentOut)
@@ -394,6 +484,10 @@ def skip_archetype_survey(db: Session = Depends(get_db)) -> ArchetypeAssignmentO
     existing = (
         db.query(ArchetypeAssignment)
         .filter(ArchetypeAssignment.user_id == user.user_id)
+        .order_by(
+            ArchetypeAssignment.assigned_at.desc(),
+            ArchetypeAssignment.assignment_id.desc(),
+        )
         .first()
     )
     if existing is not None and existing.skipped_at is not None:
@@ -608,7 +702,6 @@ def data_summary(db: Session = Depends(get_db)):
         "planned_count": by_state.get(TaskState.PLANNED, 0) + by_state.get("PLANNED", 0),
         "session_count": session_count,
         "reflection_count": reflection_count,
-        "notion_enabled": user.notion_enabled,
     }
 
 
@@ -632,7 +725,7 @@ def delete_my_account(
 
     If retain_for_research=true (default): anonymize task and session rows,
     preserving behavioral measurements for product research. Identifying
-    fields (title, notes, notion_page_id) are cleared. User row is deleted.
+    fields and legacy external-sync identifiers are cleared. User row is deleted.
 
     If retain_for_research=false: hard delete cascade across all tables.
     """
@@ -656,6 +749,41 @@ def delete_my_account(
         request=request,
         redacted_metadata={"retain_for_research": body.retain_for_research},
     )
+
+    # Runtime cleanup must succeed before the irreversible database mutation.
+    # If Redis is unavailable, leave the account intact so the authenticated
+    # user can retry instead of returning a false-success response after the
+    # user row has already disappeared.
+    try:
+        RedisClient().purge_user_runtime_state(uid)
+    except Exception as exc:  # noqa: BLE001 - convert to a recoverable boundary
+        logger.warning(
+            "delete_my_account: pre-delete runtime purge failed for user %s: %s",
+            uid,
+            exc,
+        )
+        write_security_audit_event(
+            db=db,
+            actor_user_id=uid,
+            user_id=uid,
+            event_type="account_delete_failed",
+            surface="/users/me",
+            target_type="user",
+            target_id=audit_user_target(uid),
+            status="failed",
+            request=request,
+            redacted_metadata={
+                "phase": "runtime_purge_precondition",
+                "retain_for_research": body.retain_for_research,
+            },
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Account deletion could not safely clear runtime state. "
+                "Nothing was deleted; try again."
+            ),
+        ) from exc
 
     # Drop scope so the cascade DELETEs/UPDATEs can run unfiltered.
     set_current_user_id(None)
@@ -687,16 +815,9 @@ def delete_my_account(
     finally:
         set_current_user_id(uid)
 
-    runtime_purged = False
-    try:
-        RedisClient().purge_user_runtime_state(uid)
-        runtime_purged = True
-    except Exception as exc:  # noqa: BLE001 - DB deletion must remain durable
-        logger.warning("delete_my_account: Redis runtime purge failed for user %s: %s", uid, exc)
-
     return {
         "ok": True,
         "deleted_user_id": uid,
         "data_retained_for_research": body.retain_for_research,
-        "runtime_state_purged": runtime_purged,
+        "runtime_state_purged": True,
     }

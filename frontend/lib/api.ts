@@ -139,12 +139,18 @@ export async function api<T = unknown>(
 
 export async function ackExposureRender(
   exposureId: string | null | undefined,
-  details?: { surfaceId?: string; contentSnapshot?: Record<string, unknown>; clientEventId?: string }
+  details?: {
+    surfaceId?: string;
+    contentSnapshot?: Record<string, unknown>;
+    clientEventId?: string;
+    keepalive?: boolean;
+  }
 ): Promise<boolean> {
   if (!exposureId) return false;
   try {
     await api(`/v1/exposures/${encodeURIComponent(exposureId)}/ack/render`, {
       method: "POST",
+      keepalive: details?.keepalive,
       body: JSON.stringify({
         surface_id: details?.surfaceId,
         content_snapshot: details?.contentSnapshot,
@@ -161,12 +167,13 @@ export async function ackExposureRender(
 
 export async function ackExposureSuppression(
   exposureId: string | null | undefined,
-  details?: { suppressionReason?: string }
+  details?: { suppressionReason?: string; keepalive?: boolean }
 ): Promise<boolean> {
   if (!exposureId) return false;
   try {
     await api(`/v1/exposures/${encodeURIComponent(exposureId)}/ack/suppress`, {
       method: "POST",
+      keepalive: details?.keepalive,
       body: JSON.stringify({
         suppression_reason: details?.suppressionReason || "client_discarded_before_render",
       }),
@@ -175,6 +182,27 @@ export async function ackExposureSuppression(
   } catch {
     // Like render acknowledgement, suppression telemetry must never block the
     // user's current action. Missing suppression stays visible in /operator.
+    return false;
+  }
+}
+
+export function queueExposureSuppressionBeacon(
+  exposureId: string | null | undefined,
+): boolean {
+  if (
+    !exposureId ||
+    typeof navigator === "undefined" ||
+    typeof navigator.sendBeacon !== "function"
+  ) {
+    return false;
+  }
+  try {
+    const body = new Blob(
+      [JSON.stringify({ exposure_id: exposureId })],
+      { type: "application/json" },
+    );
+    return navigator.sendBeacon("/api/exposures/suppress", body);
+  } catch {
     return false;
   }
 }

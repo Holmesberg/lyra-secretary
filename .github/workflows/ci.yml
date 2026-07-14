@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, 'wave-*' ]
+    branches: [ main, 'wave-*', 'refactor/freeze-closure' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -112,7 +112,80 @@ jobs:
     - name: Run refactor contract gate
       run: |
         python -m py_compile scripts/scan_refactor_contracts.py
+        python scripts/scan_refactor_contracts.py --self-test-jarvis-import-boundary
+        python scripts/scan_refactor_contracts.py --self-test-no-rebrand
+        python scripts/scan_refactor_contracts.py --self-test-removed-surface-docs
+        python scripts/scan_refactor_contracts.py --self-test-legacy-notification-pending
         python scripts/scan_refactor_contracts.py --fail-on-errors
+
+    - name: Run backend layer import gate
+      run: |
+        python -m py_compile scripts/scan_backend_layer_imports.py
+        python scripts/scan_backend_layer_imports.py --self-test
+        python scripts/scan_backend_layer_imports.py --fail-on-errors
+
+    - name: Run Cortex read-only gate
+      run: |
+        python -m py_compile scripts/scan_cortex_readonly.py
+        python scripts/scan_cortex_readonly.py --self-test
+        python scripts/scan_cortex_readonly.py --fail-on-errors
+
+    - name: Run shipped feature preservation registry gate
+      run: |
+        python -m py_compile scripts/scan_feature_preservation_registry.py
+        python scripts/scan_feature_preservation_registry.py --self-test
+        python scripts/scan_feature_preservation_registry.py --fail-on-errors
+
+    - name: Run post-wave evidence manifest contract gate
+      run: node scripts/test_post_wave_evidence_manifest_contract.mjs
+
+    - name: Run browser account role contract gate
+      run: node scripts/test_browser_account_role_contract.mjs
+
+    - name: Run repository instructions contract gate
+      run: node scripts/test_repository_instructions_contract.mjs
+
+    - name: Run NewTaskModal fresh-default contract gate
+      run: node scripts/test_new_task_modal_contract.mjs
+
+    - name: Run onboarding Brain Dump recovery contract gate
+      run: node scripts/test_onboarding_brain_dump_recovery_contract.mjs
+
+    - name: Run onboarding skip durability contract gate
+      run: node scripts/test_onboarding_skip_contract.mjs
+
+    - name: Run product-loop account preflight contract gate
+      run: node scripts/test_product_loop_account_preflight_contract.mjs
+
+    - name: Run operator account preflight contract gate
+      run: node scripts/test_operator_account_preflight_contract.mjs
+
+    - name: Run proof preflight negative contract gate
+      run: node scripts/proof_preflight.mjs --self-test
+
+    - name: Run notification lifecycle topology trust gate
+      run: node scripts/browser_notification_lifecycle_dogfood.mjs --self-test
+
+    - name: Run Pressure Map planning provenance contract gate
+      run: node scripts/test_pressure_map_planning_provenance_contract.mjs
+
+    - name: Run Today task-row mobile contract gate
+      run: node scripts/test_today_task_row_mobile_contract.mjs
+
+    - name: Run undo invalidation contract gate
+      run: node scripts/test_undo_invalidation_contract.mjs
+
+    - name: Run frontend query-key contract gate
+      run: node scripts/test_frontend_query_keys_contract.mjs
+
+    - name: Run public runtime watchdog contract gate
+      run: node scripts/test_public_runtime_watchdog_contract.mjs
+
+    - name: Run public frontend restart contract gate
+      run: node scripts/test_public_frontend_restart_contract.mjs
+
+    - name: Run public backend isolation contract gate
+      run: node scripts/test_public_backend_isolation_contract.mjs
 
     - name: Run OpenClaw operator relay hermetic test
       run: node scripts/test_openclaw_operator_relay.mjs

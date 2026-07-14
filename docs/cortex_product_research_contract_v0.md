@@ -38,9 +38,9 @@ profiles. It must not be paid for by casually adding user prompts.
 
 LyraOS is not primarily an AI-powered productivity system. Its user-facing
 research core is rule-governed, probabilistic, inspectable, longitudinal, and
-epistemically constrained. AI systems may support enrichment, operator
-orchestration, or interface assistance, but they must not become hidden
-authorities over behavioral truth.
+epistemically constrained. No current model runtime enriches product data.
+Future reasoning systems may support bounded drafts only after separate
+approval and must never become hidden authorities over behavioral truth.
 
 The stronger framing is:
 
@@ -571,9 +571,10 @@ suspected missing lifecycle transition. It is both a user-facing exposure and a
 measurement repair attempt, so it must preserve repair provenance and obey the
 repair interruption budget.
 
-OpenClaw remains operator-only. OpenClaw agent output, operator orchestration,
-and local runtime traces are not Lyra product research data unless a successor
-contract explicitly admits operator-session analysis.
+The operator relay and any reasoning adapter remain operator-only. Adapter
+output, operator orchestration, and local runtime traces are not Lyra product
+research data unless a successor contract explicitly admits operator-session
+analysis.
 
 ### 10.2 Runtime Surface Registry And Precedence
 

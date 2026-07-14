@@ -5,6 +5,8 @@ param(
   [switch]$AssumeLocalFrontendReady,
   [switch]$AllowPublicFrontendArtifactMutation,
   [int]$LocalCurrentPort = 3013,
+  [int]$LocalCurrentApiPort = 8000,
+  [switch]$FixtureAccountReady,
   [switch]$ProxyApi
 )
 
@@ -24,7 +26,7 @@ if ($Topology -eq "public") {
   $env:LYRA_API_ORIGIN = "https://api.lyraos.org"
 } elseif ($Topology -eq "local-current") {
   $env:LYRA_FRONTEND_ORIGIN = "http://localhost:$LocalCurrentPort"
-  $env:LYRA_API_ORIGIN = "http://localhost:8000"
+  $env:LYRA_API_ORIGIN = "http://localhost:$LocalCurrentApiPort"
   $env:NEXTAUTH_URL = $env:LYRA_FRONTEND_ORIGIN
 } else {
   $env:LYRA_FRONTEND_ORIGIN = "http://localhost:3000"
@@ -41,8 +43,8 @@ Write-Host "Proxy API: $useProxyApi"
 Write-Host "Operator cookie length: $($cookie.Length)"
 Write-Host ""
 
-if (($Topology -eq "local" -or $Topology -eq "local-current") -and -not $AssumeLocalFrontendReady) {
-  $port = if ($Topology -eq "local-current") { $LocalCurrentPort } else { 3000 }
+if ($Topology -eq "local" -and -not $AssumeLocalFrontendReady) {
+  $port = 3000
   Ensure-LocalFrontendDev `
     -Reason "operator read-only local topology proof" `
     -Port $port `
@@ -86,6 +88,9 @@ Invoke-NodeChecked `
 $browserArgs = @("scripts/browser_stress_operator_readonly.mjs")
 if ($useProxyApi) {
   $browserArgs += @("--proxy-api", "true")
+}
+if ([bool]$FixtureAccountReady) {
+  $browserArgs += @("--fixture-account-ready", "true")
 }
 $browserArgs += @("--expect-readiness-split", "true")
 

@@ -160,10 +160,10 @@ export function AppShell({
           href="/pulse"
           prefetch={false}
           className="flex items-center gap-2.5 border-b border-hairline-signal/30 px-5 py-5"
-          aria-label="Barzakh - Pulse"
+          aria-label="LyraOS - Pulse"
         >
           <Image
-            src="/barzakh-logo.png"
+            src="/lyraos-logo.png"
             alt=""
             width={36}
             height={36}
@@ -174,7 +174,7 @@ export function AppShell({
           />
           <div className="flex flex-col leading-none">
             <span className="text-[15px] font-semibold tracking-tight text-parchment">
-              Barzakh
+              LyraOS
             </span>
             <span className="mt-1 font-mono text-[9px] uppercase tracking-widest text-signal/70">
               v1.5 · alpha
@@ -278,10 +278,10 @@ export function AppShell({
             <Link
               href="/pulse"
               className="flex items-center gap-2.5"
-              aria-label="Barzakh - back to Pulse"
+              aria-label="LyraOS - back to Pulse"
             >
               <Image
-                src="/barzakh-logo.png"
+                src="/lyraos-logo.png"
                 alt=""
                 width={32}
                 height={32}
@@ -291,7 +291,7 @@ export function AppShell({
                 className="h-8 w-auto"
               />
               <span className="text-base font-semibold tracking-tight text-parchment">
-                Barzakh
+                LyraOS
               </span>
             </Link>
             <button

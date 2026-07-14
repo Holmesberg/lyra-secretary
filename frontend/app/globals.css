@@ -160,13 +160,13 @@
      (≥20px = comfortable touch target). Default browser range looks
      generic; this matches Neural Noir's signal cyan with subtle glow.
      Shipped 2026-04-30 with the inline timer flow. */
-  .barzakh-range {
+  .lyraos-range {
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
     cursor: pointer;
   }
-  .barzakh-range::-webkit-slider-runnable-track {
+  .lyraos-range::-webkit-slider-runnable-track {
     height: 4px;
     background: linear-gradient(
       90deg,
@@ -175,7 +175,7 @@
     );
     border-radius: 2px;
   }
-  .barzakh-range::-webkit-slider-thumb {
+  .lyraos-range::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     width: 20px;
@@ -190,10 +190,10 @@
     cursor: pointer;
     transition: transform 120ms ease;
   }
-  .barzakh-range::-webkit-slider-thumb:hover {
+  .lyraos-range::-webkit-slider-thumb:hover {
     transform: scale(1.1);
   }
-  .barzakh-range::-moz-range-track {
+  .lyraos-range::-moz-range-track {
     height: 4px;
     background: linear-gradient(
       90deg,
@@ -202,7 +202,7 @@
     );
     border-radius: 2px;
   }
-  .barzakh-range::-moz-range-thumb {
+  .lyraos-range::-moz-range-thumb {
     width: 20px;
     height: 20px;
     border-radius: 50%;

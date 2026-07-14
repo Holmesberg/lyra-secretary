@@ -65,7 +65,7 @@ Current freeze override: older sections that say a signal "must surface,"
 describe `/insights` additions, or name avoidance/motivation/focus/productivity
 patterns are historical research/product hypotheses only. During the
 freeze-closure refactor they do not authorize new runtime features, new
-user-facing insights, OpenClaw/GPT wiring, passive tracking, schema migration,
+user-facing insights, ReasoningRuntimeContract/OpenClawAdapter wiring, passive tracking, schema migration,
 provider adapters, behavior-transition equations, or agency/avoidance claims.
 Any future promotion must pass the current Authority Map, clean-data admission,
 exposure accounting, ClaimCompiler boundary, and explicit implementation plan.
@@ -289,7 +289,7 @@ Current active governance sources:
   separates current implementation, doctrine, limitations, and future gates.
 - `docs/adaptive_scheduling_progressive_inference.md` - future-gated adaptive
   scheduling evidence contract.
-- `docs/academic_execution_substrate.md` - academic/provider execution
+- `docs/archive/legacy/provider_academic/academic_execution_substrate.md` - academic/provider execution
   substrate doctrine; subordinate to this manifesto.
 - `docs/academic_pressure_map_contract.md` - Academic Pressure Map trust-state
   and copy contract; subordinate to this manifesto.
@@ -300,11 +300,11 @@ Current active governance sources:
   handling, and public-beta upgrade gates.
 - `docs/deployment_architecture.md` - current public topology and operational
   deployment shape.
-- `docs/openclaw_orchestration_contract_v0.md` - operator-only OpenClaw
+- `docs/archive/legacy/ai/openclaw_orchestration_contract_v0.md` - operator-only OpenClaw
   runtime boundary.
 - `docs/context_window_blast_radius_contract.md` - operator/Codex execution
   discipline; subordinate to product/research doctrine.
-- `docs/provider_adapter_contract.md` - scalability contract for normalizing
+- `docs/archive/legacy/provider_academic/provider_adapter_contract.md` - archived scalability contract for normalizing
   provider-local dialects into provider-blind substrate primitives.
 - `docs/drift_rollup_contract.md` - scalability contract for async/cached drift
   metrics without turning derived rollups into observed truth.
@@ -374,8 +374,10 @@ LyraOS is a behavioral measurement instrument with a productivity interface.
 Its user-facing intelligence is rule-governed, probabilistic, inspectable,
 longitudinal, and epistemically constrained. It is not powered at its core by
 opaque LLM inference, hidden embeddings, generic summaries, or black-box
-confidence theater. LLMs may enrich tasks, assist operator work, and provide
-interface glue, but they do not become truth authorities for behavioral claims.
+confidence theater. Historical LLM task enrichment is retired; deterministic
+heuristics own current candidate scoring. Future reasoning-runtime support may
+assist only after separate approval and may never become truth authority for
+behavioral claims.
 
 Stronger inference must be earned through:
 
@@ -636,7 +638,7 @@ Only accepted intention plus observed execution can support recalibration.
 
 The canonical subordinate documents are:
 
-- `docs/academic_execution_substrate.md`
+- `docs/archive/legacy/provider_academic/academic_execution_substrate.md`
 - `docs/academic_pressure_map_contract.md`
 
 These documents may define product copy, provider-adapter detail, and Academic
@@ -822,7 +824,7 @@ LyraOS is a measurement-backed productivity tool. Most productivity tools assume
 
 The tool layer delivers scheduling, timer management, and behavioral feedback. The research layer validates whether those insights actually predict anything. Neither is primary. The tool fails if the research is invalid — you are acting on noise. The research is academic if the tool is not used — you have no data.
 
-The central question: **Are humans wrong about themselves in a structured way that predicts failure?**
+The central question: **Are humans wrong about themselves in a structured way that can improve planning without overclaiming failure?**
 
 If yes — the error is modelable, correctable, and eventually preventable.
 If no — the data tells us that too, and we pivot.
@@ -843,7 +845,7 @@ accounting, clean-data rules, and ClaimCompiler boundaries explicitly allow it.
 Lyra has two failure modes a pre-alpha can hit:
 
 1. **Correctness failure.** The instrument ships with bugs, edge-case mishandling, or state inconsistency. This is visible, fixable, and ordinary engineering.
-2. **Retention-mechanism failure.** The instrument ships correct but invisible. Users are told "we are measuring you" but never see the measurement come back. The feedback/output loop that makes Lyra feel like a *mirror* rather than a *logger* is what closes the Error → Exposure → Adjustment triplet (see `docs/phase_6_architecture_backlog.md` §"Calibration as Learning Velocity, Not Performance"). Without that loop, no correctness work will save retention, because there is nothing to retain to.
+2. **Retention-mechanism failure.** The instrument ships correct but invisible. Users are told "we are measuring you" but never see the measurement come back. The feedback/output loop that makes Lyra feel like a *mirror* rather than a *logger* is what closes the Error → Exposure → Adjustment triplet (see `docs/archive/legacy/planning/phase_6_architecture_backlog.md` §"Calibration as Learning Velocity, Not Performance"). Without that loop, no correctness work will save retention, because there is nothing to retain to.
 
 **Pre-alpha shipping order is retention mechanism first, correctness polish last.**
 
@@ -854,7 +856,7 @@ What this means operationally:
 - "Insights unlock in N sessions" framing applies: measurement-state progress is legitimate and desired (see `docs/do_not_add.md` §Gamification — PERMITTED section). It is not a streak, it is not a badge, it is an honest statement of when the instrument has enough data to say something.
 - Onboarding that forces users through the instrument battery *before they see the product* is retention-hostile and is deferred to May 1+. Direct entry to `/today` with progressive instrument capture ships first.
 
-Concretely ordered in `docs/building_phases.md` §Phase 4.5 under Tier 1 (retention architecture), Tier 2 (operator-verifiable bugs), Tier 3 (infrastructure), Tier 4 (onboarding ceremony). Tier 1 is the shipping gate for the alpha. Tiers 2–4 can slip a week; Tier 1 cannot.
+Concretely ordered in `docs/archive/legacy/planning/building_phases.md` §Phase 4.5 under Tier 1 (retention architecture), Tier 2 (operator-verifiable bugs), Tier 3 (infrastructure), Tier 4 (onboarding ceremony). Tier 1 is the shipping gate for the alpha. Tiers 2–4 can slip a week; Tier 1 cannot.
 
 This section is load-bearing for the retention outcome. The May 21 retention checkpoint is the test of whether this philosophy survived contact with ten non-operator users. If retention fails *and* Tier 1 shipped completely, the finding is "the feedback loop wasn't enough" and Phase 1A pivot (delta-only) activates. If retention fails *and* Tier 1 slipped, the finding is unreadable — we shipped a logger and measured logger retention.
 
@@ -1047,7 +1049,7 @@ Implementation: imported events live in Redis (ephemeral) or in `external_event_
 April snapshot. The current architecture is the Next.js web app with NextAuth
 Google identity, frontend-minted backend JWT, FastAPI v1 API, request user
 scope middleware, SQLAlchemy/Postgres persistence, Redis hot state, APScheduler
-workers, and a separate operator-only JARVIS/OpenClaw layer. The current
+workers, and a separate operator notification relay. The current
 authoritative public topology is `https://lyraos.org` -> `https://api.lyraos.org`;
 see `docs/deployment_architecture.md`, `README.md`, and the active Cortex
 contracts for the current shape. Archive summaries are lineage unless
@@ -1056,7 +1058,7 @@ explicitly promoted.
 ```
 Web UI (Next.js)                        ─┐
 Telegram (operator-only, not alpha)      ├→ FastAPI Backend → TaskManager → Postgres (prod) / SQLite (dev) + Redis → Notion
-OpenClaw agent (testing/dev, not alpha)  ─┘                ↕
+Operator relay (testing/dev, not alpha)  ─┘                ↕
                                                       APScheduler
                                   (reminders, overflow, sync retry, overdue
                                    task detection, pause prediction)
@@ -1069,24 +1071,31 @@ OpenClaw agent (testing/dev, not alpha)  ─┘                ↕
 - Pause/resume support — prayer breaks excluded from delta
 - Hard Rules in SKILL.md — AI agent cannot confirm without backend response
 
-**User-facing vs internal interfaces (clarified April 21, 2026):** Alpha users interact via the Web UI only. Telegram and OpenClaw remain operator-only development/testing tools until components are integrated into the Lyra codebase proper. User-facing Telegram + LLM-parsed task creation ship post-retention-validation. See `docs/strategic_decisions_april_21.md §5` and `docs/building_phases.md §Phase 4.5 Tier 4`.
+**User-facing vs internal interfaces (clarified July 11, 2026):** Alpha users
+interact through the Web UI only. Telegram and the operator notification relay
+remain operator-only transport. Future AI-assisted product behavior is parked
+behind evidence, ClaimCompiler, exposure, and approval gates; older roadmap
+documents do not authorize it.
 
-**Operator LLM runtime (clarified May 9, 2026):** JARVIS and the operator's
-OpenClaw stack may use hosted NVIDIA NIM models, currently
-`moonshotai/kimi-k2.6` with model-native thinking enabled for operator chat.
-This is an operator-only runtime choice, not a research signal and not a
-non-operator user-facing inference surface. Structured parser calls must keep
-machine-readable output constraints even when the chat runtime model changes.
+**Reasoning runtime boundary (clarified July 11, 2026):** Future AI reasoning
+must pass through:
 
-**Operator orchestration runtime (clarified May 9, 2026):** OpenClaw may be
-wired as a multi-agent operator runtime with Kimi K2.6 as the synthesis and
-adjudication layer, Codex/GPT-5.5 as the implementation and structural
-adversary layer, Gemini as the exploration and epistemic adversary layer, and a
-local memory layer for summarization/state persistence. This orchestration is
-operator-only. Agent outputs are not Lyra behavioral observations, are not
-research ground truth, and must not bypass Cortex clean-data, provenance,
-unknown-propagation, or product/research boundary rules. See
-`docs/openclaw_orchestration_contract_v0.md`.
+```text
+LyraOS
+-> ReasoningRuntimeContract
+-> OpenClawAdapter
+```
+
+This is a future runtime boundary, not a research signal or current user-facing
+inference surface. The retired NIM/Ollama task-enrichment runtime does not
+authorize replacement wiring.
+
+**Historical operator orchestration note (May 9, 2026):** The archived
+multi-agent orchestration proposal is non-authorizing lineage. No current
+operator model runtime, direct model client, or product reasoning adapter is
+authorized. Agent outputs are not Lyra behavioral observations or research
+ground truth and may not bypass Cortex, provenance, `UNKNOWN` propagation, or
+product/research boundaries.
 
 **Production deployment (April 16, 2026+):** Postgres via Supabase eu-west-1 (primary); SQLite retained at `.env.backup-sqlite-2026-04-16` for fast revert. Fronted by Cloudflare Tunnel from the operator's laptop at `lyraos.org` + `api.lyraos.org`. See `docs/deployment_architecture.md` for stack + recovery playbook.
 
@@ -1332,7 +1341,7 @@ Scale to 10-30 users. Deliberately recruit subjects unlike the primary researche
 Adaptive planning engine. Auto-calibrate estimates based on historical bias per user per task category. No ML needed yet — pure behavioral.
 
 **Phase 3 — BCI integration (conditional)**
-Entry point: BR41N.IO hackathon, October 2026 (Path B in `docs/building_phases.md` — preferred for research clarity over the earlier April slot).
+Entry point: BR41N.IO hackathon, October 2026 (Path B in `docs/archive/legacy/planning/building_phases.md` — preferred for research clarity over the earlier April slot).
 
 BCI and self-report are two noisy estimators of an underlying cognitive state. Neither is ground truth. The integration model combines them with Bayesian weighting proportional to each source's individual signal-to-noise ratio — estimated per user from simultaneous EEG + self-report sessions.
 
@@ -1713,12 +1722,12 @@ acceptance_rate_permissive := acceptance_count_permissive / total_fires_permissi
 **Why Rule 13 does NOT activate VT-25.** Rule 13 ships the shrinkage blend silently — every user consumes `bias_factor_final` transparently via the calibration_nudge magnitude but is never told "you are a Procrastinator." The archetype is a computational handle, not a surfaced identity. No label-internalization pathway exists until a reveal UI ships.
 
 **Distinguishing analyses — frozen at reveal-feature launch (not at this drafting):**
-- **25a. Pre-vs-post-reveal within-user planning shift.** For users who see their archetype at session 5–7 (per `docs/building_phases.md §Phase 5 progressive revelation`), compute the shift in mean `planned_duration_minutes` over the 10 sessions preceding vs 10 sessions following the reveal moment, stratified by the archetype's prior_bias_factor direction. **Label-internalization detected:** users assigned high-prior archetypes (procrastinator, diffuse_average, lark_low_discipline) inflate plans by ≥15% post-reveal relative to pre-reveal, controlling for category and time_of_day.
+- **25a. Pre-vs-post-reveal within-user planning shift.** For users who see their archetype at session 5–7 (per `docs/archive/legacy/planning/building_phases.md §Phase 5 progressive revelation`), compute the shift in mean `planned_duration_minutes` over the 10 sessions preceding vs 10 sessions following the reveal moment, stratified by the archetype's prior_bias_factor direction. **Label-internalization detected:** users assigned high-prior archetypes (procrastinator, diffuse_average, lark_low_discipline) inflate plans by ≥15% post-reveal relative to pre-reveal, controlling for category and time_of_day.
 - **25b. Cross-user bias_factor trajectory — reveal-shown vs reveal-suppressed.** Using a within-subject A/B via the Rule 11 no-nudge-day framework adapted for archetype reveals: if some users see the reveal and others don't (by experimental suppression), compare the bias_factor convergence trajectory over sessions 5–15, paired by archetype. **Self-fulfilling prophecy detected:** shown users' personal bias_factor moves toward their archetype prior faster than suppressed users', indicating the reveal is *inducing* the prior rather than the prior predicting natural behavior.
 
 **Mitigation if detected:**
 - Demote reveal copy from identity-framing ("you are a Procrastinator") to pattern-framing ("your first-10-sessions data resembles the Procrastinator prior — subject to change as you accumulate more data")
-- Add explicit medium-confidence framing at every reveal surface (per `docs/building_phases.md:167` "Phase 5 progressive revelation")
+- Add explicit medium-confidence framing at every reveal surface (per `docs/archive/legacy/planning/building_phases.md:167` "Phase 5 progressive revelation")
 - Consider suppressing reveal entirely for users whose 25a analysis shows strong label-internalization and running silent-shrinkage-only for those users
 
 **Status:** Drafted April 22, 2026 alongside Rule 13. INACTIVE until reveal UI ships (expected v1.1, post-Spring-School per `docs/strategic_decisions_april_22.md §5`). When activated, distinguishing analyses 25a + 25b become frozen pre-registration — no post-hoc threshold tuning permitted.
@@ -1834,14 +1843,14 @@ The experiment has started. Stay in measurement mode.
 *Manifesto v1.9 — revised April 22, 2026 evening (VT-17d retroactive-confirmation stratified acceptance-rate pre-registered — parallel to VT-17 strict formula, no modification of VT-17. Triggered by 2 observed predictions that correctly anticipated operator food breaks taken outside the app; closes the in-app-capture gap with alembic 030 `pause_event.self_reported_retroactively`, new confirm/pending-confirmation endpoints, retroactive chip on /today, and exclusion of retroactive pauses from predictor training + VT-17 primary matching to prevent self-reinforcement.)*
 *Manifesto v1.10 — revised April 22, 2026 late-evening (Rule 13: archetype-prior shrinkage is the canonical `bias_factor` computation. Pre-registered BEFORE the first shrinkage-blended value reaches any user-facing surface. Formula, archetype priors, RESEARCH_PRIORS dict, and skip-path Diffuse Average default are all frozen. Triggered by 2026-04-22 trusted-user feedback "doesn't REALLY get me" and the operator's decision to accelerate clustering from Phase 5 into trusted-user week 2. VT-25 "Archetype-Reveal Narrative Internalization" drafted — inactive until reveal UI ships in v1.1.)*
 *Manifesto v1.11 — revised April 23, 2026 (H3 Internal Conflict Signatures drafted as PROVISIONAL — multi-faction behavioral-signature framework reading the same data H1 reads through a competing-systems lens. Five signatures S1–S5 each specify disconfirming prediction first, confirming prediction second. Zero active at drafting; earliest activation months out at current growth. Diagnostic-only — confirmed signatures surface as pattern names in /insights, never as nudges. VT-26 "Category-Semantic Drift" + VT-27 "Pause-Predictor Confidence Calibration" pre-registered in same day's sweep. LYR-105/107/110 correctness bugs fixed alongside.)*
-*Manifesto v1.12 — revised April 26, 2026 (Loop 11 thesis-instrument foundation. Rules 14, 15, 16 pre-registered alongside Alembic 033 schema commit which lands the deadline mechanism foundation per `docs/deadline_mechanism_design.md` Option B. Rule 14 — H2 deadline-distance kill criterion at n ≥ 60 deadline-tagged tasks. Rule 15 — per-deadline `bias_factor` modulation kill at within-user σ ≤ 0.10 in ≥ 3 of 5 first qualifying users. Rule 16 — soft-warning RCT split-cohort design (INACTIVE until UX surface ships; arm partition deterministic by `user_id mod 2`). Rule 12 amended: `scope_density` operationally defined as `scope_bullet_count_at_plan / planned_duration_minutes` (column from Alembic 033, parsed by `extract_scope_bullets()`); deadline-binding stratification added as exploratory secondary. Deadline state enum extended to `planned | active | completed | missed | skipped | voided` per operator decision — mirrors task lifecycle semantics; `planned` is the default for new deadline rows. SIR-compliant per `docs/design_patterns/structural_investigation_rule.md`.)*
+*Manifesto v1.12 — revised April 26, 2026 (Loop 11 thesis-instrument foundation. Rules 14, 15, 16 pre-registered alongside Alembic 033 schema commit which lands the deadline mechanism foundation per `docs/archive/legacy/provider_academic/deadline_mechanism_design.md` Option B. Rule 14 — H2 deadline-distance kill criterion at n ≥ 60 deadline-tagged tasks. Rule 15 — per-deadline `bias_factor` modulation kill at within-user σ ≤ 0.10 in ≥ 3 of 5 first qualifying users. Rule 16 — soft-warning RCT split-cohort design (INACTIVE until UX surface ships; arm partition deterministic by `user_id mod 2`). Rule 12 amended: `scope_density` operationally defined as `scope_bullet_count_at_plan / planned_duration_minutes` (column from Alembic 033, parsed by `extract_scope_bullets()`); deadline-binding stratification added as exploratory secondary. Deadline state enum extended to `planned | active | completed | missed | skipped | voided` per operator decision — mirrors task lifecycle semantics; `planned` is the default for new deadline rows. SIR-compliant per `docs/design_patterns/structural_investigation_rule.md`.)*
 *Manifesto v1.13 — revised April 27, 2026 (Rule 17: VT-25 archetype-reveal no-RCT measurement design. Activation closes the LYR-112 retroactive gap from 2026-04-26 — that commit shipped a static reveal to 2 users without freezing kill criteria; Rule 17 fixes the gap and replaces the static reveal with a dynamic posterior reveal for everyone. §25a frozen — within-user pre-vs-post planning shift, 15% inflation kill threshold, floor n ≥ 5 fresh-exposure users with ≥ 10 sessions on each side. §25b dropped as untestable in the unanimous-deployment design; flagged for future split-cohort revisit if signal warrants. 2 pre-existing static-exposed users (operator + 1 survey completer) excluded from §25a comparison via `user.created_at > Rule-17 commit timestamp` filter. Operator-authorized via AskUserQuestion 2026-04-27.)*
 *Manifesto v1.14 — revised April 27, 2026 (Rule 17 §25a framing refinement: renamed detection signal "label-internalization" → "label reinforcement". Operator note: users classified as a high-prior archetype often already self-identify as that archetype, so the 15% post-reveal inflation could be REINFORCEMENT of an existing self-image, RELEASE-FROM-RESTRAINT permission, or genuine INSTALLATION of a new label — three plausible causal stories that produce the same observable signal and cannot be distinguished without a pre-reveal self-classification instrument. The §25a metric, threshold, and floor are unchanged. Mitigation (drop archetype names from reveal copy) applies identically regardless of which causal story is right. Writeup obligation: §25a results must acknowledge the triple-confound; "Lyra caused this" claims require a pre-reveal self-class instrument that does not currently exist.)*
 
 *Manifesto v1.15 — revised April 27, 2026 (Rule 17 archetype-proximity math amendment: effective-sample-size correction + bias-factor winsorization. Operator dogfood at 28 EXECUTED tasks returned 100.0% Procrastinator, 0.0% every other archetype — a 1.0000 / 0.0000 split at four decimals after 2 weeks of overrun-heavy data with a few extreme outliers (top observed bf values were 9.2, 3.7, 3.5). Two structural problems with the un-amended math: (1) the iid likelihood assumption was false (tasks within a user's window correlate along user × week × project × measurement-protocol axes; effective sample size by Kish formula is materially smaller than N), and (2) extreme outliers (bf > 3.0) drove tight-σ archetypes to log-likelihood -∞, since a Normal pdf at 30σ is effectively zero — so any archetype wide enough to absorb a 9× overrun (procrastinator σ=0.40) wins by a margin no amount of ESS damping can close. Amendment v1.15 fixes both: per-archetype log-likelihood is divided by `sqrt(N)` (Kish-style ESS treatment, treating the cluster as ~sqrt(N) effective independent observations) AND each task's observed bf is winsorized to `[0.30, 3.0]` before the Normal-pdf evaluation. The cap is principled: bf > 3.0 isn't "estimation error" the archetype model can read — it's scope-inflation territory the existing VT-22 hypothesis already covers, with its own dedicated mediation test (analysis rule 12). §25a metric, kill threshold (15% post-reveal planning inflation), floor (n ≥ 5 fresh-exposure users), and cohort caveat are all unchanged. v1.13/v1.14 analyses produced under the un-damped/un-winsorized formula remain on record and are tagged with their math version. UI display cap (99% maximum displayed) and display floor (2% minimum bar width) added as belt-and-suspenders against future saturation; rendering layer in `archetype-proximity-display.tsx`. Prompted by operator's question "the math behind archetypes might be leaning too hard towards procrastinator no?" — the honest answer was yes, on both counts. Post-amendment, operator's same data reads as 62% lark_low_discipline / 37% procrastinator / 1% diffuse_average — a real distribution rather than identity assertion.)*
 *Manifesto v1.16 — revised May 9, 2026 (Manifesto Governance Rule added. `MANIFESTO.md` is now the highest-priority governance artifact. Research-doctrine, ontology, measurement-semantics, pre-registration, product/research-boundary, and long-term architecture changes must either update the manifesto or explicitly document why no manifesto update is needed. This is a documentation governance rule only; no measurement formulas, thresholds, or product behavior changed.)*
-*Manifesto v1.17 — revised May 9, 2026 (Operator-only LLM runtime note added. Lyra JARVIS and the operator OpenClaw stack now target NVIDIA NIM `moonshotai/kimi-k2.6` with thinking enabled for chat turns. Structured parser calls explicitly disable thinking to preserve JSON. No measurement formulas, thresholds, clean-data profiles, or non-operator user-facing claims changed.)*
 *Manifesto v1.18 — revised May 15, 2026 (External-review interpretation and rule-based instrumentation doctrine added. Current LyraOS claims are framed as a rule-governed, probabilistic, inspectable behavioral instrument with AI support limited to enrichment, operator work, and interface assistance. User attention is treated as scientific capital; missingness remains provenance-aware signal; archetypes are cold-start priors whose authority must decay or be overridden by personal traces.)*
+*Manifesto v1.20 — revised July 11, 2026 (Direct NIM/Ollama task enrichment retired. Future AI reasoning remains parked behind ReasoningRuntimeContract/OpenClawAdapter, evidence, ClaimCompiler, exposure, and explicit approval gates. No measurement formulas, clean-data profiles, or user-facing behavioral claims changed.)*
 
 ---
 
@@ -1992,11 +2001,11 @@ These rules are fixed in advance to remove analyst degrees of freedom on the day
 
     **Implementation anchor.** The canonical implementation is `blend()` in `backend/app/services/bias_factor_service.py` (wired into `GET /v1/analytics/bias_factor/lookup` in Phase C of the 2026-04-22 ship). Any alternative computation path anywhere in the codebase MUST delegate to this function — no re-implementation in endpoints or frontends.
 
-14. **H2 deadline-distance kill criterion.** *(Added April 26, 2026 — pre-registered alongside the Alembic 033 schema commit that lands the deadline mechanism foundation. Triggered by the operator's locked Option B decision in `docs/deadline_mechanism_design.md` "Operator decision (Apr 25)" to build the deadline mechanism mid-alpha.)* When n ≥ 60 deadline-tagged tasks accumulate across the alpha cohort with `task.deadline_id IS NOT NULL`, `task.voided_at IS NULL`, and `task.state = 'EXECUTED'`, compute the within-cohort Spearman ρ between `deadline_distance_minutes` and signed `duration_delta_minutes`. **Definition:** `deadline_distance_minutes = (deadline.due_at_utc − task.executed_end_utc).total_seconds() / 60` — positive when the task was completed before its deadline (met), negative when completed after (missed). **Kill criterion:** if p ≥ 0.05 → H2 is falsified; deadline-distance is not a meaningful predictor of overrun and the deadline mechanism's research claim drops. The mechanism continues as a product feature regardless. **Stratification:** report the ρ separately by `task.deadline_match_source` ∈ {`'user_explicit'`, `'parser_auto'`, `'user_corrected'`} so inferred-binding noise can be isolated from the explicit-binding signal. **Floor on stratification:** if any stratum has n < 30, that stratum's ρ is reported but not used for the kill decision.
+14. **H2 deadline-distance kill criterion.** *(Added April 26, 2026 — pre-registered alongside the Alembic 033 schema commit that lands the deadline mechanism foundation. Triggered by the operator's locked Option B decision in `docs/archive/legacy/provider_academic/deadline_mechanism_design.md` "Operator decision (Apr 25)" to build the deadline mechanism mid-alpha.)* When n ≥ 60 deadline-tagged tasks accumulate across the alpha cohort with `task.deadline_id IS NOT NULL`, `task.voided_at IS NULL`, and `task.state = 'EXECUTED'`, compute the within-cohort Spearman ρ between `deadline_distance_minutes` and signed `duration_delta_minutes`. **Definition:** `deadline_distance_minutes = (deadline.due_at_utc − task.executed_end_utc).total_seconds() / 60` — positive when the task was completed before its deadline (met), negative when completed after (missed). **Kill criterion:** if p ≥ 0.05 → H2 is falsified; deadline-distance is not a meaningful predictor of overrun and the deadline mechanism's research claim drops. The mechanism continues as a product feature regardless. **Stratification:** report the ρ separately by `task.deadline_match_source` ∈ {`'user_explicit'`, `'parser_auto'`, `'user_corrected'`} so inferred-binding noise can be isolated from the explicit-binding signal. **Floor on stratification:** if any stratum has n < 30, that stratum's ρ is reported but not used for the kill decision.
 
 15. **Per-deadline `bias_factor` analysis.** *(Added April 26, 2026 alongside Rule 14.)* For users with ≥ 30 EXECUTED, non-voided sessions distributed across ≥ 2 active or completed deadlines (`task.deadline_id IS NOT NULL`, deadline not voided), compute the per-deadline `bias_factor_observed = mean(signed duration_delta_minutes) / mean(planned_duration_minutes)` within each deadline's bound task set. **Pre-registered threshold for "deadlines DO modulate `bias_factor`":** within-user σ across deadlines > 0.30 in ≥ 3 of the first 5 such users to qualify. **Kill criterion:** if within-user σ ≤ 0.10 in ≥ 3 of 5 → per-deadline lens dropped from analytics; deadlines remain as a planning surface only and the Vocabulary Mirror per-deadline elaboration (`docs/insight_mechanisms_post_retention.md` A1) does not ship. **Reporting:** the σ distribution is reported alongside the headline number for transparency; users between 0.10 and 0.30 σ are inconclusive and the rule is rerun at the next 5-user batch.
 
-16. **Soft-warning RCT split-cohort design (deadline mechanism).** *(Added April 26, 2026 alongside Rule 14. INACTIVE until the deadline soft-warning UX ships per `docs/deadline_mechanism_design.md §"Soft-warning UX"`. Triggered for activation when the UX surface is enabled in production.)* When the deadline misalignment soft-warning UX ships, users are deterministically partitioned into two arms by `(user_id mod 2)`: arm 0 = control (no warning), arm 1 = treatment (warning shown when conditions in `deadline_mechanism_design.md:194-204` are met). Partition is fixed at user creation; users do NOT cross arms. **Endpoints stamp arm assignment at task-creation time** so analyses control for arm exposure. After 4 weeks of cohort use with the surface live: (i) compare `mean(tasks_bound_per_deadline)` between arms; (ii) compare `mean(duration_delta_minutes)` on `deadline_id IS NOT NULL` vs `IS NULL` tasks within each arm; (iii) compare deadline-met rate (from `task_deadline_outcome.deadline_met`) between arms; (iv) survey the treatment arm with one item: "Was the warning useful or naggy?" (5-point scale). **Kill criterion:** if the treatment arm shows no improvement in deadline-bound completion rate (one-tailed test, α = 0.05) AND median user satisfaction declines ≥ 1 point vs control, the soft-warning surface is feature-flagged off. Backend deadline data continues to accrue; only the UX surface retracts. **Floor on activation:** the rule does not run until both arms have ≥ 20 users with ≥ 30 EXECUTED tasks each — below this floor, results are reported but not actioned. **No post-hoc threshold tuning permitted** — once activated, the kill threshold and survey item are frozen.
+16. **Soft-warning RCT split-cohort design (deadline mechanism).** *(Added April 26, 2026 alongside Rule 14. INACTIVE until the deadline soft-warning UX ships per `docs/archive/legacy/provider_academic/deadline_mechanism_design.md §"Soft-warning UX"`. Triggered for activation when the UX surface is enabled in production.)* When the deadline misalignment soft-warning UX ships, users are deterministically partitioned into two arms by `(user_id mod 2)`: arm 0 = control (no warning), arm 1 = treatment (warning shown when conditions in `deadline_mechanism_design.md:194-204` are met). Partition is fixed at user creation; users do NOT cross arms. **Endpoints stamp arm assignment at task-creation time** so analyses control for arm exposure. After 4 weeks of cohort use with the surface live: (i) compare `mean(tasks_bound_per_deadline)` between arms; (ii) compare `mean(duration_delta_minutes)` on `deadline_id IS NOT NULL` vs `IS NULL` tasks within each arm; (iii) compare deadline-met rate (from `task_deadline_outcome.deadline_met`) between arms; (iv) survey the treatment arm with one item: "Was the warning useful or naggy?" (5-point scale). **Kill criterion:** if the treatment arm shows no improvement in deadline-bound completion rate (one-tailed test, α = 0.05) AND median user satisfaction declines ≥ 1 point vs control, the soft-warning surface is feature-flagged off. Backend deadline data continues to accrue; only the UX surface retracts. **Floor on activation:** the rule does not run until both arms have ≥ 20 users with ≥ 30 EXECUTED tasks each — below this floor, results are reported but not actioned. **No post-hoc threshold tuning permitted** — once activated, the kill threshold and survey item are frozen.
 
 17. **VT-25 archetype-reveal measurement (no-RCT design).** *(Added April 27, 2026 — pre-registered alongside the dynamic-reveal ship. Operator decision: ship dynamic reveal to all users without a control arm; accepts that VT-25 §25b becomes untestable in this design. See AskUserQuestion 2026-04-27.)*
 

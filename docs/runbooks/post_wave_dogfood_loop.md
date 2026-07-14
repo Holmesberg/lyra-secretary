@@ -25,6 +25,112 @@ Never use the operator account for mutable dogfood. Operator browser checks must
 observe runtime state without creating, editing, rendering actions, dismissing
 notifications, starting timers, or changing product/user state.
 
+## Proof Preflight
+
+Run the canonical preflight before an expensive browser verifier. Do not
+re-derive health paths, ports, account state, or export limits in ad hoc shell
+commands.
+
+Hosted read-only example:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\proof_preflight.ps1 `
+  -Topology public -Account both -Intent readonly `
+  -ExpectedFrontendBuildId <served-build-id>
+```
+
+Focused local-current mutable example, after the isolated runtime is already
+running:
+
+```powershell
+$head = (git rev-parse HEAD).Trim()
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  .\scripts\start_local_current_proof_runtime.ps1 `
+  -ExpectedBuildId $head -OutFile tmp\local-current-runtime\active.json
+
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\proof_preflight.ps1 `
+  -Topology local-current -FrontendOrigin http://localhost:3018 `
+  -ApiOrigin http://localhost:8001 -ProxyApi `
+  -Account holmesberg -Intent mutable -ExpectedFrontendBuildId $head `
+  -RuntimeManifest tmp\local-current-runtime\active.json `
+  -FixtureAccountReady -TargetPath /pulse `
+  -ReadySelector '[data-testid="pulse-quick-capture-input"]' `
+  -SyntheticPrefix 'DOGFOOD W4 seam-name' -MaxPendingNotifications 0
+```
+
+The launcher requires `.venv311`, refuses occupied ports instead of killing or
+reusing them, builds only `.next-local-current`, verifies exact frontend and
+backend build IDs, and records process ownership in the runtime manifest.
+
+For cold-start or account-state proof that must not depend on shared local
+rows, start the same runtime with disposable data:
+
+```powershell
+$head = (git rev-parse HEAD).Trim()
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  .\scripts\start_local_current_proof_runtime.ps1 `
+  -ExpectedBuildId $head -OutFile tmp\local-current-runtime\disposable.json `
+  -DisposableData -DisposableRedisDatabase 15
+
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\proof_preflight.ps1 `
+  -Topology local-current -FrontendOrigin http://localhost:3018 `
+  -ApiOrigin http://localhost:8001 -Account holmesberg -Intent readonly `
+  -ExpectedFrontendBuildId $head `
+  -RuntimeManifest tmp\local-current-runtime\disposable.json
+```
+
+Disposable mode migrates a fresh SQLite database, requires an empty dedicated
+Redis DB in the bounded `8..15` range, disables email/operator notification
+delivery, and permits only the real Holmesberg cookie. The target account is
+initially unprovisioned; its first authenticated read may create only its row
+and operational audit data inside that disposable database. Account readiness
+is therefore predictably cold-start rather than inherited from shared state.
+Operator proof remains read-only against a non-disposable runtime.
+
+After proof, tear down only those recorded processes and the bounded artifact:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  .\scripts\stop_local_current_proof_runtime.ps1 `
+  -Manifest tmp\local-current-runtime\active.json -RemoveArtifact
+```
+
+For disposable mode, require data cleanup explicitly:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  .\scripts\stop_local_current_proof_runtime.ps1 `
+  -Manifest tmp\local-current-runtime\disposable.json `
+  -RemoveArtifact -RemoveDisposableData
+```
+
+Teardown validates the recorded run directory, exact checkout interpreter,
+bounded SQLite filename, and dedicated Redis target before deletion/reset. It
+does not erase a nonempty Redis DB at startup; unknown state fails closed.
+
+The preflight blocks product API mutations. Outside disposable first-login
+provisioning it is read-only. It checks the canonical
+`/v1/health/topology` endpoint, artifact isolation, local port/process
+ownership, exact build ID, real cookie/session validity, account role,
+terms/onboarding state, optional selected date/week, target mount, export
+duration/size, active timer, pending notification debt, and active rows for an
+explicit `DOGFOOD` prefix. Browser API mutations are blocked.
+
+If the readiness fixture is used, it is local-current and browser-response
+only; it does not change the account. It may support focused product proof but
+is not hosted-public evidence.
+
+The backend test entrypoint is `scripts/run_backend_pytest.ps1`. It always
+runs from `backend/` through `.venv311` and fails closed when that interpreter
+is unavailable; do not reconstruct either choice in ad hoc commands.
+
+For abandoned synthetic task/deadline rows, use the existing local-current
+`-CleanupOnly` product-loop mode with the exact `DOGFOOD` prefix, then rerun
+the preflight with that prefix. This terminalizes test rows through canonical
+commands. It is not a user reset, onboarding reset, production repair, or
+permission to suppress unrelated lifecycle evidence. Pending lifecycle debt,
+an active timer, or a non-`DOGFOOD` prefix remains blocking.
+
 ## Command
 
 ```powershell
@@ -97,6 +203,12 @@ The script records:
   `holmesberg-product-loop` directory when `-IncludeProductLoop` is used.
 - `ci_cd_proof.json` when `-IncludeCiCdProof` is used.
 
+`summary.json.evidence_manifest` is the top-level proof index. It must surface
+the topology class, frontend/backend build IDs, frontend/API origins,
+implementation/cohort readiness split, `exposure_without_render_count`, browser
+issues/warnings, count diffs, cleanup proof status, gated paths, and CI/CD proof
+location/status when collected.
+
 ## Modes
 
 `quick`
@@ -143,7 +255,8 @@ Authentication and scoping:
 
 - operator cookie resolves as operator;
 - Holmesberg resolves as non-operator;
-- non-operator cannot access operator/admin/Jarvis routes;
+- non-operator cannot access `/operator`, remaining operator-only `/admin/*`
+  triage endpoints, or removed/parked JARVIS routes;
 - account export rows are scoped to the authenticated user.
 
 Topology:
@@ -192,7 +305,8 @@ journey through every modal.
 `-IncludeProductLoop` runs
 `scripts/browser_holmesberg_product_loop_dogfood.mjs`, which currently covers:
 
-- non-operator route denial for `/operator`, `/admin`, and parked Jarvis;
+- non-operator route denial for `/operator`, remaining operator-only `/admin/*`
+  triage endpoints, and removed/parked JARVIS routes;
 - read-only route sweep for Pulse, Today, Calendar, Deadlines, Table, Insights,
   and Settings;
 - deadline creation through the browser;
@@ -344,7 +458,7 @@ exists.
 
 | Surface / Flow | Required Proof | Current Status |
 |---|---|---|
-| Auth and scoping | Holmesberg is non-operator; operator is operator; non-operator cannot access `/operator`, `/admin`, or active Jarvis. | browser covered |
+| Auth and scoping | Holmesberg is non-operator; operator is operator; non-operator cannot access `/operator`, remaining operator-only `/admin/*` triage endpoints, or removed/parked JARVIS routes. | browser covered |
 | Operator cockpit | `/operator` and `/v1/operator/dashboard` are read-only, content-minimized, invariant-derived. | browser covered |
 | Pulse hub | Quick capture, re-entry visibility, focus card, pressure map, notifications render without raw internals. | partially browser covered |
 | First-run onboarding | Consent/intro, parse, edit dump, lock-in, skip, empty validation. | targeted/gated |
@@ -365,11 +479,11 @@ exists.
 | Insights / ClaimCompiler | Locked/held/unlocked/suppressed states avoid causal/identity/diagnostic claims and show concrete reasons. | forced-state browser/API covered |
 | Exposure lifecycle | Decision, render or suppression, browser ack, linked interaction outcome where applicable. | partially browser/API covered; existing-decision suppression endpoint covered by backend tests |
 | Notifications | Queue, pending, render, dismiss, terminal lifecycle row. | browser/API covered |
-| Notification branches | Action, expiry, duplicate/cooldown, linked exposure, OpenClaw mirror redaction. | action/expiry browser/API covered; linked exposure backend covered; duplicate/OpenClaw targeted/gated |
+| Notification branches | Action, expiry, duplicate/cooldown, linked exposure, operator-mirror redaction. | action/expiry browser/API covered; linked exposure backend covered; duplicate/operator-mirror targeted/gated |
 | Settings/export | Export registry sections and no secret markers. | API covered |
 | Settings/delete | Browser export download, staged delete, final hard-delete and Redis purge. | disposable-account gated |
 | Providers/integrations | Credential redaction, provider provenance, connect/disconnect/failure/import idempotency. | credential gated |
-| OpenClaw/operator relay | No accidental product-user exposure, no destructive drain before send, one delivery authority. | relay covered; compatibility pending endpoint operator-gated and peek-only |
+| Operator relay | No accidental product-user exposure, no destructive drain before send, one delivery authority. | relay covered; compatibility pending endpoint operator-gated and peek-only |
 
 ## What The Loop Does Not Yet Prove
 
@@ -445,6 +559,27 @@ Holmesberg mutable verification is incomplete until synthetic rows are cleaned,
 voided, or proven harmless. Cleanup proof must be recorded before a wave can be
 closed.
 
+For a focused notification-lifecycle proof against a disposable local-current
+runtime, use the explicitly labelled account-readiness fixture:
+
+```powershell
+$env:LYRA_COOKIE_HOLMESBERG = [Environment]::GetEnvironmentVariable(
+  "LYRA_COOKIE_HOLMESBERG", "User"
+)
+node scripts\browser_notification_lifecycle_dogfood.mjs `
+  --topology local-current `
+  --frontend http://localhost:3018 `
+  --api http://localhost:8001 `
+  --proxy-api true `
+  --fixture-account-ready true `
+  --run-id <run-id>
+```
+
+The fixture changes only the browser's `GET /v1/users/me` eligibility response.
+Notification pushes, mounted DOM, browser acknowledgements, exported lifecycle
+rows, and cleanup remain real. The verifier rejects this fixture unless the
+declared topology is `local-current` and both origins are loopback addresses.
+
 ## Ledger Requirement
 
 Every wave or risky PR must record:
@@ -483,6 +618,5 @@ Add targeted scripts for:
 
 - calendar drag/resize/reschedule;
 - real pressure-map recovery options after pressure safe mode is lifted;
-- notification lifecycle action/expiry;
 - table correction;
 - production-data insights held/unlocked latency.

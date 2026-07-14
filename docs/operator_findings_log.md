@@ -220,7 +220,7 @@ the structure is load-bearing.
 - `notebooks/operator_analytics.ipynb` — the tooling
 - `docs/dogfood_findings_living.md` — where (a) actions land
 - `MANIFESTO.md §The Validity Register` — where (b) actions land
-- `docs/building_phases.md` §Phase 5 / 5.5 — milestone gates
+- `docs/archive/legacy/planning/building_phases.md` §Phase 5 / 5.5 — milestone gates
 
 ---
 

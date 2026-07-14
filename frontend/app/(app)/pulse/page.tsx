@@ -26,10 +26,11 @@
  * Zero new backend endpoints. Zero schema changes. All data sourced
  * from endpoints that existed before this commit.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
-import { ackExposureRender, api } from "@/lib/api";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { api } from "@/lib/api";
 import {
   queryTasks,
   queryTasksRange,
@@ -48,6 +49,7 @@ import {
   getAcademicPressureMap,
   type AcademicPressureMapResponse,
 } from "@/lib/academic";
+import { registerPressureMapCandidate } from "@/lib/pressure-map-exposure";
 import {
   focusMinutesToday,
   winsToday,
@@ -89,6 +91,33 @@ function dateKeyOffset(offsetDays: number): string {
 }
 
 const TASK_EVIDENCE_HISTORY_DAYS = 62;
+
+function PulseUnavailablePanel({
+  testId,
+  label,
+}: {
+  testId: string;
+  label: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      role="status"
+      className="terminal-panel flex min-h-[180px] flex-col items-center justify-center gap-3 px-5 py-7 text-center"
+    >
+      <AlertTriangle className="h-5 w-5 text-ember" aria-hidden />
+      <div>
+        <div className="font-display text-[10px] uppercase tracking-macro text-ember">
+          [ Unavailable ]
+        </div>
+        <p className="mt-2 max-w-xs text-sm text-parchment">
+          {label} did not load.
+        </p>
+        <p className="mt-1 text-xs text-dust">Other Pulse tools are still usable.</p>
+      </div>
+    </div>
+  );
+}
 
 export default function PulsePage() {
   const today = todayKey();
@@ -134,13 +163,28 @@ export default function PulsePage() {
   });
   const pressureQ = useQuery<AcademicPressureMapResponse>({
     queryKey: queryKeys.pressureMapHorizon(pressureHorizonDays),
-    queryFn: () => getAcademicPressureMap(pressureHorizonDays),
+    queryFn: async () => {
+      const pressure = await getAcademicPressureMap(pressureHorizonDays);
+      registerPressureMapCandidate(pressure);
+      return pressure;
+    },
     staleTime: 60_000,
   });
 
-  useEffect(() => {
-    void ackExposureRender(pressureQ.data?.exposure_id);
-  }, [pressureQ.data?.exposure_id]);
+  const failedPulseReads = [
+    { label: "account", failed: meQ.isError, fetching: meQ.isFetching, refetch: meQ.refetch },
+    { label: "today's plan", failed: tasksTodayQ.isError, fetching: tasksTodayQ.isFetching, refetch: tasksTodayQ.refetch },
+    { label: "recent sessions", failed: tasksRangeQ.isError, fetching: tasksRangeQ.isFetching, refetch: tasksRangeQ.refetch },
+    { label: "planning evidence", failed: taskEvidenceQ.isError, fetching: taskEvidenceQ.isFetching, refetch: taskEvidenceQ.refetch },
+    { label: "deadlines", failed: deadlinesQ.isError, fetching: deadlinesQ.isFetching, refetch: deadlinesQ.refetch },
+    { label: "integrations", failed: integrationsQ.isError, fetching: integrationsQ.isFetching, refetch: integrationsQ.refetch },
+    { label: "Pressure Map", failed: pressureQ.isError, fetching: pressureQ.isFetching, refetch: pressureQ.refetch },
+  ].filter((read) => read.failed);
+  const retryingFailedReads = failedPulseReads.some((read) => read.fetching);
+
+  function retryFailedReads() {
+    void Promise.allSettled(failedPulseReads.map((read) => read.refetch()));
+  }
 
   const tasksToday = tasksTodayQ.data ?? [];
   const recentTasks = tasksRangeQ.data?.tasks ?? [];
@@ -182,50 +226,120 @@ export default function PulsePage() {
     <div className="flex flex-col gap-6">
       <PulseGreeting
         displayName={displayName}
-        focusMinutesToday={todaysFocusMinutes}
-        winsToday={todaysWins}
-        overdueCount={overdueCount}
+        focusMinutesToday={tasksTodayQ.isError ? null : todaysFocusMinutes}
+        winsToday={tasksTodayQ.isError ? null : todaysWins}
+        overdueCount={deadlinesQ.isError ? null : overdueCount}
       />
 
       <PulseQuickCaptureV2 />
 
-      <PulseReentryQueue tasks={taskEvidence} />
+      {failedPulseReads.length > 0 && (
+        <div
+          data-testid="pulse-partial-error"
+          role="alert"
+          className="flex flex-col gap-3 border border-ember/40 bg-ember/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ember" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-parchment">Some live data is unavailable</p>
+              <p className="mt-0.5 text-xs text-dust">
+                {failedPulseReads.map((read) => read.label).join(", ")}
+              </p>
+            </div>
+          </div>
+          <button
+            data-testid="pulse-partial-error-retry"
+            type="button"
+            onClick={retryFailedReads}
+            disabled={retryingFailedReads}
+            className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 border border-ember/40 px-3 font-mono text-[10px] uppercase tracking-widest text-ember transition-colors hover:bg-ember/10 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${retryingFailedReads ? "animate-spin" : ""}`} />
+            Retry
+          </button>
+        </div>
+      )}
+
+      {taskEvidenceQ.isError ? (
+        <PulseUnavailablePanel testId="pulse-unavailable-reentry" label="Re-entry" />
+      ) : (
+        <PulseReentryQueue tasks={taskEvidence} />
+      )}
 
       {/* HERO ROW — Today's Plan | Focus Card | Deadlines */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="lg:col-span-3">
-          <PulseTodaysPlanV2 tasks={tasksToday} />
+          {tasksTodayQ.isError ? (
+            <PulseUnavailablePanel testId="pulse-unavailable-today-plan" label="Today's plan" />
+          ) : (
+            <div data-testid="pulse-today-plan-section">
+              <PulseTodaysPlanV2 tasks={tasksToday} />
+            </div>
+          )}
         </div>
         <div className="lg:col-span-5">
-          <PulseFocusCard todaysTasks={tasksToday} />
+          {tasksTodayQ.isError ? (
+            <PulseUnavailablePanel testId="pulse-unavailable-current-focus" label="Current focus" />
+          ) : (
+            <PulseFocusCard todaysTasks={tasksToday} />
+          )}
         </div>
         <div className="lg:col-span-4">
-          <PulseDeadlinesV2 deadlines={deadlines} />
+          {deadlinesQ.isError ? (
+            <PulseUnavailablePanel testId="pulse-unavailable-deadlines" label="Deadlines" />
+          ) : (
+            <div data-testid="pulse-deadlines-section">
+              <PulseDeadlinesV2 deadlines={deadlines} />
+            </div>
+          )}
         </div>
       </div>
 
       {/* BOTTOM ROW — System Insight | Recovery | Integrations */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="lg:col-span-4">
-          <PulseSystemInsight
-            tasksToday={tasksToday}
-            recentTasks={recentTasks}
-          />
+          {tasksRangeQ.isError ? (
+            <PulseUnavailablePanel testId="pulse-unavailable-system-insight" label="System insight" />
+          ) : (
+            <PulseSystemInsight
+              tasksToday={tasksToday}
+              recentTasks={recentTasks}
+            />
+          )}
         </div>
         <div className="lg:col-span-4">
-          <PulseAcademicPressureMap
-            pressure={pressureQ.data ?? null}
-            loading={pressureQ.isLoading}
-            horizonDays={pressureHorizonDays}
-            onHorizonChange={setPressureHorizonDays}
-            taskEvidence={taskEvidence}
-          />
+          {pressureQ.isError ? (
+            <PulseUnavailablePanel testId="pulse-unavailable-pressure-map" label="Pressure Map" />
+          ) : (
+            <div data-testid="pulse-pressure-section">
+              <PulseAcademicPressureMap
+                pressure={pressureQ.data ?? null}
+                loading={pressureQ.isLoading}
+                horizonDays={pressureHorizonDays}
+                onHorizonChange={setPressureHorizonDays}
+                taskEvidence={taskEvidence}
+              />
+            </div>
+          )}
         </div>
-        <div className="lg:col-span-2">
-          <PulseRecovery recentTasks={recentTasks} />
-        </div>
-        <div className="lg:col-span-2">
-          <PulseIntegrationsV2 integrations={integrations} />
+        <div className="grid gap-4 lg:col-span-4">
+          <div>
+            {tasksRangeQ.isError ? (
+              <PulseUnavailablePanel testId="pulse-unavailable-recovery" label="Recovery rhythm" />
+            ) : (
+              <PulseRecovery recentTasks={recentTasks} />
+            )}
+          </div>
+          <div>
+            {integrationsQ.isError ? (
+              <PulseUnavailablePanel testId="pulse-unavailable-integrations" label="Integrations" />
+            ) : (
+              <div data-testid="pulse-integrations-section">
+                <PulseIntegrationsV2 integrations={integrations} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

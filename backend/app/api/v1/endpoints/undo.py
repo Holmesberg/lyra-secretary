@@ -90,18 +90,6 @@ def undo_action(db: Session = Depends(get_db)) -> UndoResponse:
                 prev_state_str = data.get("previous_state", "PLANNED")
                 task.state = TaskState(prev_state_str)
             
-            # Re-sync to Notion (un-archive and sync)
-            try:
-                from app.services.notion_client import NotionClient
-                notion = NotionClient()
-                if task.notion_page_id:
-                    # Un-archive prior to syncing properties
-                    notion.client.pages.update(page_id=task.notion_page_id, archived=False)
-                notion.sync_task(task)
-            except Exception as e:
-                logger.warning(f"Failed to sync un-archived task to Notion during undo: {e}")
-                # Let task_manager fallback or log it 
-                
             message = f"Undid deletion of task '{data['title']}'"
         elif action == "start_stopwatch":
             session_id = data["session_id"]
@@ -192,11 +180,6 @@ def undo_action(db: Session = Depends(get_db)) -> UndoResponse:
                     )
             else:
                 redis.clear_stopwatch_state(user_id)
-
-            try:
-                redis.queue_notion_sync(task_id, {"action": "sync"}, user_id=user_id)
-            except Exception as e:
-                logger.warning("Failed to queue Notion sync during timer-start undo: %s", e)
 
             try:
                 invalidate_me(uid)

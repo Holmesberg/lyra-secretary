@@ -2,9 +2,8 @@
 
 Synchronously splits a free-text brain-dump into tasks + deadlines. NO
 LLM dependency — operator-locked: "deterministic over magic" for the
-onboarding moment. Async LLM enrichment still fires per-task via the
-existing `llm_enrichment` worker and may post a "Possible better match"
-chip later via the trust-not-rewrite contract.
+onboarding moment. Deterministic deadline suggestions may be attached during
+task creation; no model provider runs in this parser.
 
 Algorithm:
   1. Split raw text on commas / newlines / semicolons / " then "
@@ -371,7 +370,7 @@ def _has_explicit_deadline_framing(segment_lower: str) -> bool:
 
 def _now_local(now_iso: Optional[str]) -> datetime:
     """Resolve the user's "current local time" anchor. Falls back to
-    server local time. Strips tz to match Barzakh's naive-internal
+    server local time. Strips tz to match LyraOS's naive-internal
     convention."""
     if now_iso:
         try:
@@ -497,7 +496,7 @@ def _extract_when(segment: str, now_local: datetime) -> Optional[datetime]:
     settings = {
         "PREFER_DATES_FROM": "future",
         "RELATIVE_BASE": now_local,
-        # Barzakh's production timezone is Cairo and the onboarding audience uses
+        # LyraOS's production timezone is Cairo and the onboarding audience uses
         # day/month numeric dates. Without this, dateparser treats ambiguous
         # slash dates as US-style month/day, so "6/9" lands on June 9 instead
         # of September 6 while the visible title has the date stripped.

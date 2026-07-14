@@ -21,6 +21,7 @@ from app.db.models import (
     User,
 )
 from app.main import app
+from app.services import output_surface_diagnostics as output_surface_diagnostics_module
 from app.services import output_surfaces as output_surface_module
 from app.services.output_surfaces import (
     OutputSurfaceSpec,
@@ -1143,6 +1144,65 @@ def test_output_surface_diagnostics_reports_missing_terminal_event(db):
     assert micro_mirror["legacy_rows"] == 1
     assert micro_mirror["v0_renders"] == 1
     assert micro_mirror["parity_delta"] == 0
+
+
+def test_output_surface_diagnostics_reuses_eligibility_metrics(db, monkeypatch):
+    user = User(
+        email=f"surface-diagnostics-cache-{uuid4()}@example.com",
+        timezone="Africa/Cairo",
+        is_operator=True,
+    )
+    db.add(user)
+    db.commit()
+
+    calls = []
+
+    def fake_metrics(_db, *, clean_profile, signal_targets, user_id, cutoff):
+        calls.append((clean_profile, tuple(signal_targets)))
+        assert user_id == user.user_id
+        assert cutoff is not None
+        return {
+            "projection_class": "fake_projection",
+            "candidate_n": 42,
+            "clean_n": 2,
+            "contaminated_n": 40,
+            "unknown_n": 0,
+            "exposed_n": 0,
+            "intervention_n": 0,
+            "state_counts": {},
+            "missing_projection": None,
+        }
+
+    monkeypatch.setattr(
+        output_surface_diagnostics_module,
+        "_eligibility_metrics_for_surface_inputs",
+        fake_metrics,
+    )
+
+    diagnostics = output_surface_diagnostics(
+        db,
+        user_id=user.user_id,
+        window_days=30,
+    )
+
+    registry = load_output_surface_registry()
+    expected_keys = {
+        (spec.clean_profile, tuple(spec.signal_targets))
+        for spec in registry.values()
+        if spec.truth_class in {"interpretation", "intervention"}
+    }
+    expected_surface_count = sum(
+        1
+        for spec in registry.values()
+        if spec.truth_class in {"interpretation", "intervention"}
+    )
+    assert set(calls) == expected_keys
+    assert len(calls) == len(expected_keys)
+    assert len(diagnostics["current_data_eligibility"]) == expected_surface_count
+    assert all(
+        row["candidate_n"] == 42
+        for row in diagnostics["current_data_eligibility"]
+    )
 
 
 def test_output_surface_diagnostics_endpoint_is_operator_only(db, client):

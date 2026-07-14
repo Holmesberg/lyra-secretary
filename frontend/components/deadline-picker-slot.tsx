@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import {
@@ -8,6 +9,7 @@ import {
   type DeadlinePreviewResponse,
 } from "@/lib/deadlines";
 import { queryKeys } from "@/lib/query-keys";
+import { ackVisibleDeadlineSuggestion } from "@/components/use-deadline-preview";
 
 interface DeadlinePickerSlotProps {
   deadlineId: string | null;
@@ -30,6 +32,12 @@ export function DeadlinePickerSlot({
   onTogglePicker,
   onPick,
 }: DeadlinePickerSlotProps) {
+  useEffect(() => {
+    if (!deadlineId && suggestion?.deadline_id && !showPicker) {
+      ackVisibleDeadlineSuggestion(suggestion);
+    }
+  }, [deadlineId, showPicker, suggestion]);
+
   // Bindable deadlines = state in {planned, active}, voided_at IS NULL.
   // Backend's list endpoint already filters voided by default; we filter
   // state client-side because the list endpoint accepts only one state
@@ -77,7 +85,7 @@ export function DeadlinePickerSlot({
         className="rounded-sm border border-hairline-signal/40 bg-void-2/40 p-3 text-xs text-dust"
       >
         <div>
-          Barzakh thinks this binds to{" "}
+          LyraOS thinks this binds to{" "}
           <span className="font-medium text-parchment">
             {suggestion.deadline_title}
           </span>

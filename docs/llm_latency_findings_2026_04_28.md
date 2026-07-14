@@ -1,4 +1,8 @@
 # LLM latency benchmark — qwen2.5:3b deadline discovery
+
+> Historical benchmark. The direct Ollama/NIM enrichment runtime and benchmark
+> script were retired on 2026-07-11. This file is lineage, not configuration or
+> implementation authority.
 **Date:** 2026-04-28
 **Model:** qwen2.5:3b (Q4 quantized, ~1.9GB on disk)
 **Hardware:** operator's RTX A4000 8GB VRAM

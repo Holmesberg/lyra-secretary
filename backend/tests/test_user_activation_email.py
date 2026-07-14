@@ -78,8 +78,8 @@ def test_activation_mailer_sends_plain_transactional_payload(monkeypatch):
     calls: list[dict] = []
     monkeypatch.setattr(user_mailer.settings, "USER_EMAIL_ENABLED", True)
     monkeypatch.setattr(user_mailer.settings, "RESEND_API_KEY", "resend-key")
-    monkeypatch.setattr(user_mailer.settings, "USER_EMAIL_FROM", "hello@barzakh.app")
-    monkeypatch.setattr(user_mailer.settings, "FRONTEND_URL", "https://barzakh.app")
+    monkeypatch.setattr(user_mailer.settings, "USER_EMAIL_FROM", "hello@lyraos.org")
+    monkeypatch.setattr(user_mailer.settings, "FRONTEND_URL", "https://lyraos.org")
 
     def fake_post(*_args, **kwargs):
         calls.append(kwargs)
@@ -91,10 +91,10 @@ def test_activation_mailer_sends_plain_transactional_payload(monkeypatch):
 
     assert result.sent is True
     payload = calls[0]["json"]
-    assert payload["from"] == "Barzakh <hello@barzakh.app>"
+    assert payload["from"] == "LyraOS <hello@lyraos.org>"
     assert payload["to"] == ["student@example.test"]
-    assert payload["subject"] == "Welcome to Barzakh"
-    assert "https://barzakh.app" in payload["text"]
+    assert payload["subject"] == "Welcome to LyraOS"
+    assert "https://lyraos.org" in payload["text"]
     assert "export your account data" in payload["text"]
     assert "delete your account" in payload["text"]
     forbidden = [
@@ -211,6 +211,47 @@ def test_existing_user_login_does_not_send_activation_email(db, monkeypatch):
     assert resolved.user_id == existing.user_id
 
 
+def test_existing_user_login_replaces_legacy_placeholder_google_id(db, monkeypatch):
+    monkeypatch.setattr(security, "SessionLocal", TestingSession)
+    monkeypatch.setattr(security.settings, "JWT_SECRET", "activation-email-test-secret-at-least-32-bytes")
+    monkeypatch.setattr(security.settings, "JWT_ALGORITHM", "HS256")
+    real_google_id = f"real-google-sub-{uuid4().hex[:8]}"
+    existing = _user()
+    existing.google_id = "simulated-google-sub"
+    db.add(existing)
+    db.commit()
+
+    resolved = security.resolve_user_from_token(
+        _token(existing.email, sub=real_google_id)
+    )
+
+    assert resolved.user_id == existing.user_id
+    db.expire_all()
+    row = db.query(User).filter(User.email == existing.email).one()
+    assert row.google_id == real_google_id
+
+
+def test_existing_user_login_does_not_overwrite_real_google_id(db, monkeypatch):
+    monkeypatch.setattr(security, "SessionLocal", TestingSession)
+    monkeypatch.setattr(security.settings, "JWT_SECRET", "activation-email-test-secret-at-least-32-bytes")
+    monkeypatch.setattr(security.settings, "JWT_ALGORITHM", "HS256")
+    real_google_id = f"real-google-sub-{uuid4().hex[:8]}"
+    different_google_id = f"different-google-sub-{uuid4().hex[:8]}"
+    existing = _user()
+    existing.google_id = real_google_id
+    db.add(existing)
+    db.commit()
+
+    resolved = security.resolve_user_from_token(
+        _token(existing.email, sub=different_google_id)
+    )
+
+    assert resolved.user_id == existing.user_id
+    db.expire_all()
+    row = db.query(User).filter(User.email == existing.email).one()
+    assert row.google_id == real_google_id
+
+
 def test_integrity_error_race_loser_adopts_existing_user_without_email(monkeypatch):
     existing = _user("race@example.test")
     existing.user_id = 123
@@ -264,9 +305,9 @@ def test_integrity_error_race_loser_adopts_existing_user_without_email(monkeypat
 
 
 def test_activation_email_copy_is_plain_account_infrastructure():
-    text = activation_email_text(frontend_url="https://barzakh.app")
+    text = activation_email_text(frontend_url="https://lyraos.org")
 
-    assert "Welcome to Barzakh." in text
+    assert "Welcome to LyraOS." in text
     forbidden = [
         "we noticed",
         "task",

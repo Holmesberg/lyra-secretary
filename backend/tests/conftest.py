@@ -102,6 +102,23 @@ def client():
     return TestClient(app, raise_server_exceptions=False)
 
 
+@pytest.fixture
+def account_delete_runtime_purge_ok(monkeypatch):
+    """Make account-delete success tests independent of a live Redis service."""
+    calls: list[int] = []
+
+    class SuccessfulRuntimePurge:
+        def purge_user_runtime_state(self, user_id):
+            calls.append(int(user_id))
+            return 0
+
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.users.RedisClient",
+        lambda: SuccessfulRuntimePurge(),
+    )
+    return calls
+
+
 def auth_headers(user_id: int) -> dict:
     """Build an X-User-Id header dict for TestClient requests.
 

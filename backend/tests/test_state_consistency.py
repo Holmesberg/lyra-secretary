@@ -1,4 +1,4 @@
-"""5-state system consistency checks across Task/Session/Redis/Notion/Scheduler.
+"""5-state system consistency checks across Task/Session/Redis/Scheduler.
 
 Gate #11 in the durable verification suite. Runs after any commit touching
 a state transition path (stop, pause, resume, void, skip, delete, mark_abandoned,
@@ -22,8 +22,17 @@ from datetime import datetime, timedelta
 import pytest
 from sqlalchemy import text
 
-from app.db.models import StopwatchSession, Task, TaskState, User
+from app.services import stopwatch_manager as stopwatch_manager_module
+from app.db.models import (
+    NotificationLifecycleEvent,
+    PauseEvent,
+    StopwatchSession,
+    Task,
+    TaskState,
+    User,
+)
 from app.db.scoping import set_current_user_id
+from app.services.notification_queue import enqueue_user_notification
 from tests.conftest import TestingSession
 
 
@@ -50,14 +59,14 @@ def state_env(db):
         from app.utils.redis_client import RedisClient
         rc = RedisClient()
         for uid in ("1", str(USER_ID), "user_primary"):
-            rc.clear_active_stopwatch(uid)
-            rc.client.delete(f"stopwatch:paused:{uid}")
+            rc.purge_user_runtime_state(uid)
     except Exception:
         pass
 
     set_current_user_id(None)
     wipe = TestingSession()
     try:
+        wipe.execute(text("DELETE FROM notification_lifecycle_event"))
         wipe.execute(text("DELETE FROM stopwatch_session"))
         wipe.execute(text("DELETE FROM task"))
         wipe.execute(text("DELETE FROM user"))
@@ -80,6 +89,11 @@ def state_env(db):
 
     yield db
     set_current_user_id(None)
+    try:
+        from app.utils.redis_client import RedisClient
+        RedisClient().purge_user_runtime_state(USER_ID)
+    except Exception:
+        pass
 
 
 def _h() -> dict:
@@ -182,6 +196,255 @@ def _get_task(task_id: str) -> Task:
         check.close()
 
 
+def _queue_prediction(session_id: str, notification_type: str) -> str:
+    notification_id = f"transition-{notification_type}-{session_id}"
+    write = TestingSession()
+    try:
+        enqueue_user_notification(
+            USER_ID,
+            {
+                "notification_id": notification_id,
+                "type": notification_type,
+                "session_id": session_id,
+                "message": f"{notification_type} test",
+            },
+            db=write,
+        )
+        write.commit()
+    finally:
+        write.close()
+    return notification_id
+
+
+def _notification_status(notification_id: str) -> str:
+    check = TestingSession()
+    try:
+        return (
+            check.query(NotificationLifecycleEvent.status)
+            .filter(NotificationLifecycleEvent.notification_id == notification_id)
+            .scalar()
+        )
+    finally:
+        check.close()
+
+
+@needs_redis
+def test_start_keeps_committed_success_when_redis_activation_fails(
+    state_env, client, monkeypatch
+):
+    """A post-commit Redis failure cannot create an ambiguous failed start."""
+    start, end = _future(10, 60)
+    created = client.post(
+        "/v1/create",
+        json={"title": "committed start publication", "start": start, "end": end},
+        headers=_h(),
+    )
+    assert created.status_code == 200, created.text
+    task_id = created.json()["task_id"]
+
+    from app.utils.redis_client import RedisClient
+
+    original_activate = RedisClient.activate_stopwatch
+
+    def fail_activation(*_args, **_kwargs):
+        raise ConnectionError("injected Redis activation failure")
+
+    monkeypatch.setattr(RedisClient, "activate_stopwatch", fail_activation)
+    response = client.post(
+        "/v1/stopwatch/start",
+        json={"task_id": task_id, "pre_task_readiness": 3},
+        headers=_h(),
+    )
+
+    assert response.status_code == 200, response.text
+    session_id = response.json()["session_id"]
+    assert _get_task(task_id).state == TaskState.EXECUTING
+    assert _assert_session_open(task_id).session_id == session_id
+    assert RedisClient().get_active_stopwatch(str(USER_ID)) is None
+
+    monkeypatch.setattr(RedisClient, "activate_stopwatch", original_activate)
+    status = client.get("/v1/stopwatch/status", headers=_h())
+    assert status.status_code == 200, status.text
+    assert status.json()["active"] is True
+    assert status.json()["task_id"] == task_id
+    assert status.json()["session_id"] == session_id
+    assert _assert_session_open(task_id).session_id == session_id
+
+    retry = client.post(
+        "/v1/stopwatch/start",
+        json={"task_id": task_id, "pre_task_readiness": 3},
+        headers=_h(),
+    )
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["session_id"] == session_id
+    assert _assert_session_open(task_id).session_id == session_id
+
+    stopped = client.post(
+        "/v1/stopwatch/stop",
+        params={"confirmed": "true"},
+        json={"post_task_reflection": 3, "task_completion_percentage": 80},
+        headers=_h(),
+    )
+    assert stopped.status_code == 200, stopped.text
+    _assert_redis_clear()
+
+
+@needs_redis
+def test_pause_keeps_committed_success_when_redis_publication_fails(
+    state_env, client, monkeypatch
+):
+    """A post-commit Redis failure cannot duplicate or hide pause truth."""
+    task_id = _create_and_start(client, title="committed pause publication")
+    session_id = _assert_session_open(task_id).session_id
+
+    from app.utils.redis_client import RedisClient
+
+    original_set_pause = RedisClient.set_pause_state
+
+    def fail_pause_publication(*_args, **_kwargs):
+        raise ConnectionError("injected Redis pause publication failure")
+
+    monkeypatch.setattr(
+        RedisClient,
+        "set_pause_state",
+        fail_pause_publication,
+    )
+    response = client.post(
+        "/v1/stopwatch/pause",
+        json={"pause_reason": "intentional_break", "pause_initiator": "self"},
+        headers=_h(),
+    )
+
+    assert response.status_code == 200, response.text
+    assert _get_task(task_id).state == TaskState.PAUSED
+    assert _assert_session_open(task_id).paused_at_utc is not None
+    assert RedisClient().get_active_stopwatch(str(USER_ID)) is not None
+    assert RedisClient().get_pause_state(str(USER_ID)) is None
+
+    check = TestingSession()
+    try:
+        open_events = check.query(PauseEvent).filter(
+            PauseEvent.session_id == session_id,
+            PauseEvent.resumed_at_utc.is_(None),
+        ).all()
+        assert len(open_events) == 1
+    finally:
+        check.close()
+
+    monkeypatch.setattr(RedisClient, "set_pause_state", original_set_pause)
+    status = client.get("/v1/stopwatch/status", headers=_h())
+    assert status.status_code == 200, status.text
+    assert status.json()["active"] is True
+    assert status.json()["paused"] is True
+    assert status.json()["task_id"] == task_id
+    assert status.json()["session_id"] == session_id
+    pause_state = RedisClient().get_pause_state(str(USER_ID))
+    assert pause_state is not None
+    assert pause_state["session_id"] == session_id
+
+    retry = client.post(
+        "/v1/stopwatch/pause",
+        json={"pause_reason": "intentional_break", "pause_initiator": "self"},
+        headers=_h(),
+    )
+    assert retry.status_code == 200, retry.text
+    check = TestingSession()
+    try:
+        open_events = check.query(PauseEvent).filter(
+            PauseEvent.session_id == session_id,
+            PauseEvent.resumed_at_utc.is_(None),
+        ).all()
+        assert len(open_events) == 1
+    finally:
+        check.close()
+
+    resumed = client.post("/v1/stopwatch/resume", headers=_h())
+    assert resumed.status_code == 200, resumed.text
+    assert _get_task(task_id).state == TaskState.EXECUTING
+
+    stopped = client.post(
+        "/v1/stopwatch/stop",
+        params={"confirmed": "true"},
+        json={"post_task_reflection": 3, "task_completion_percentage": 80},
+        headers=_h(),
+    )
+    assert stopped.status_code == 200, stopped.text
+    _assert_redis_clear()
+
+
+@needs_redis
+def test_resume_keeps_committed_success_when_redis_cleanup_fails(
+    state_env, client, monkeypatch
+):
+    """A post-commit Redis failure cannot duplicate or hide resume truth."""
+    task_id = _create_and_start(client, title="committed resume cleanup")
+    session_id = _assert_session_open(task_id).session_id
+    paused = client.post(
+        "/v1/stopwatch/pause",
+        json={"pause_reason": "intentional_break", "pause_initiator": "self"},
+        headers=_h(),
+    )
+    assert paused.status_code == 200, paused.text
+
+    from app.utils.redis_client import RedisClient
+
+    original_clear_pause = RedisClient.clear_pause_state
+
+    def fail_pause_cleanup(*_args, **_kwargs):
+        raise ConnectionError("injected Redis resume cleanup failure")
+
+    monkeypatch.setattr(
+        RedisClient,
+        "clear_pause_state",
+        fail_pause_cleanup,
+    )
+    response = client.post("/v1/stopwatch/resume", headers=_h())
+
+    assert response.status_code == 200, response.text
+    committed_task = _get_task(task_id)
+    committed_session = _assert_session_open(task_id)
+    assert committed_task.state == TaskState.EXECUTING
+    assert committed_task.pause_count == 1
+    assert committed_session.session_id == session_id
+    assert committed_session.paused_at_utc is None
+    assert RedisClient().get_pause_state(str(USER_ID)) is not None
+
+    check = TestingSession()
+    try:
+        events = check.query(PauseEvent).filter(
+            PauseEvent.session_id == session_id,
+        ).all()
+        assert len(events) == 1
+        assert events[0].resumed_at_utc is not None
+        assert events[0].duration_minutes is not None
+    finally:
+        check.close()
+
+    committed_total_paused = committed_session.total_paused_minutes
+    monkeypatch.setattr(RedisClient, "clear_pause_state", original_clear_pause)
+    status = client.get("/v1/stopwatch/status", headers=_h())
+    assert status.status_code == 200, status.text
+    assert status.json()["active"] is True
+    assert status.json()["paused"] is False
+    assert status.json()["task_id"] == task_id
+    assert status.json()["session_id"] == session_id
+    assert RedisClient().get_pause_state(str(USER_ID)) is None
+
+    retry = client.post("/v1/stopwatch/resume", headers=_h())
+    assert retry.status_code == 200, retry.text
+    assert _get_task(task_id).pause_count == 1
+    assert _assert_session_open(task_id).total_paused_minutes == committed_total_paused
+
+    stopped = client.post(
+        "/v1/stopwatch/stop",
+        params={"confirmed": "true"},
+        json={"post_task_reflection": 3, "task_completion_percentage": 80},
+        headers=_h(),
+    )
+    assert stopped.status_code == 200, stopped.text
+    _assert_redis_clear()
+
+
 # ---------------------------------------------------------------
 # Invariant 1: EXECUTING → Redis active, session open
 # ---------------------------------------------------------------
@@ -240,6 +503,100 @@ def test_paused_state_redis_and_session(state_env, client):
     assert session.paused_at_utc is not None
 
 
+@needs_redis
+def test_timer_transitions_supersede_prediction_prompts(state_env, client):
+    task_id = _create_and_start(client, title="prediction invalidation")
+    session = _assert_session_open(task_id)
+
+    pause_notification = _queue_prediction(
+        session.session_id,
+        "pause_prediction",
+    )
+    paused = client.post(
+        "/v1/stopwatch/pause",
+        json={"pause_reason": "intentional_break", "pause_initiator": "self"},
+        headers=_h(),
+    )
+    assert paused.status_code == 200, paused.text
+    assert _notification_status(pause_notification) == "superseded"
+
+    resume_notification = _queue_prediction(
+        session.session_id,
+        "resume_prediction",
+    )
+    resumed = client.post("/v1/stopwatch/resume", headers=_h())
+    assert resumed.status_code == 200, resumed.text
+    assert _notification_status(resume_notification) == "superseded"
+
+    stop_pause_notification = _queue_prediction(
+        session.session_id,
+        "pause_prediction",
+    )
+    stop_resume_notification = _queue_prediction(
+        session.session_id,
+        "resume_prediction",
+    )
+    stopped = client.post(
+        "/v1/stopwatch/stop",
+        json={"post_task_reflection": 4, "task_completion_percentage": 80},
+        params={"confirmed": "true"},
+        headers=_h(),
+    )
+    assert stopped.status_code == 200, stopped.text
+    assert _notification_status(stop_pause_notification) == "superseded"
+    assert _notification_status(stop_resume_notification) == "superseded"
+
+    pending = client.get("/v1/notifications/web/pending", headers=_h())
+    assert pending.status_code == 200, pending.text
+    assert pending.json()["notifications"] == []
+
+
+@pytest.mark.parametrize("failure_stage", ["lifecycle", "redis_prune"])
+@needs_redis
+def test_prediction_invalidation_failure_cannot_undo_timer_truth(
+    state_env,
+    client,
+    monkeypatch,
+    failure_stage,
+):
+    task_id = _create_and_start(
+        client,
+        title=f"prediction invalidation {failure_stage}",
+    )
+    session = _assert_session_open(task_id)
+    notification_id = _queue_prediction(session.session_id, "pause_prediction")
+
+    if failure_stage == "lifecycle":
+        monkeypatch.setattr(
+            stopwatch_manager_module,
+            "supersede_pending_prediction_notifications",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("injected lifecycle failure")
+            ),
+        )
+    else:
+        monkeypatch.setattr(
+            stopwatch_manager_module,
+            "remove_user_notifications",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                ConnectionError("injected Redis prune failure")
+            ),
+        )
+
+    paused = client.post(
+        "/v1/stopwatch/pause",
+        json={"pause_reason": "intentional_break", "pause_initiator": "self"},
+        headers=_h(),
+    )
+    assert paused.status_code == 200, paused.text
+    assert _get_task(task_id).state == TaskState.PAUSED
+
+    if failure_stage == "lifecycle":
+        assert _notification_status(notification_id) == "queued"
+    else:
+        assert _notification_status(notification_id) == "superseded"
+
+
 # ---------------------------------------------------------------
 # Invariant 3: Normal stop → EXECUTED, Redis clear, session closed
 # ---------------------------------------------------------------
@@ -264,6 +621,60 @@ def test_stop_executed_clears_all(state_env, client):
 
     _assert_redis_clear()
     _assert_session_closed(task_id)
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_state"),
+    [
+        (
+            {"post_task_reflection": 4, "task_completion_percentage": 80},
+            TaskState.EXECUTED,
+        ),
+        ({"post_task_reflection": 4}, TaskState.SKIPPED),
+    ],
+)
+@needs_redis
+def test_stop_keeps_terminal_success_when_redis_cleanup_fails(
+    state_env, client, monkeypatch, payload, expected_state
+):
+    """A post-commit Redis failure cannot turn a completed stop into a 500."""
+    task_id = _create_and_start(
+        client, title=f"terminal cleanup {expected_state.value}"
+    )
+
+    from app.utils.redis_client import RedisClient
+
+    original_clear_active = RedisClient.clear_active_stopwatch
+    original_clear_state = RedisClient.clear_stopwatch_state
+
+    def fail_terminal_cleanup(*_args, **_kwargs):
+        raise ConnectionError("injected terminal Redis cleanup failure")
+
+    monkeypatch.setattr(RedisClient, "clear_active_stopwatch", fail_terminal_cleanup)
+    monkeypatch.setattr(RedisClient, "clear_stopwatch_state", fail_terminal_cleanup)
+
+    response = client.post(
+        "/v1/stopwatch/stop",
+        params={"confirmed": "true"},
+        json=payload,
+        headers=_h(),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["task_id"] == task_id
+    assert _get_task(task_id).state == expected_state
+    _assert_session_closed(task_id)
+
+    # Restore Redis access and prove the ordinary status path converges the
+    # stale cache from canonical terminal DB truth.
+    monkeypatch.setattr(RedisClient, "clear_active_stopwatch", original_clear_active)
+    monkeypatch.setattr(RedisClient, "clear_stopwatch_state", original_clear_state)
+    assert RedisClient().get_active_stopwatch(str(USER_ID)) is not None
+
+    status = client.get("/v1/stopwatch/status", headers=_h())
+    assert status.status_code == 200, status.text
+    assert status.json()["active"] is False
+    _assert_redis_clear()
 
 
 # ---------------------------------------------------------------
@@ -438,23 +849,21 @@ def test_update_completion_keeps_timer_running(state_env, client):
 # ---------------------------------------------------------------
 
 def test_apscheduler_job_count():
-    """All 14 background jobs must be registered in scheduler.py.
+    """All 12 background jobs must be registered in scheduler.py.
 
     Count (as of 2026-05-01 — Moodle WS submissions sync, alembic 043):
       1. reminders
-      2. notion_sync
-      3. timer_overflow
-      4. overdue_tasks
-      5. stale_session_recovery
-      6. orphan_task_recovery
-      7. pause_prediction
-      8. reconcile_responses
-      9. reconcile_deadline_outcomes  (Loop 11)
-     10. sweep_missed_deadlines        (Loop 11)
-     11. llm_enrichment                 (magic-for-alpha W1)
-     12. resume_prediction              (magic-for-alpha W2)
-     13. moodle_ics_sync                (LMS wedge, alembic 041)
-     14. moodle_submissions_sync        (LMS WS auto-detect, alembic 043)
+      2. timer_overflow
+      3. overdue_tasks
+      4. stale_session_recovery
+      5. orphan_task_recovery
+      6. pause_prediction
+      7. reconcile_responses
+      8. reconcile_deadline_outcomes
+      9. sweep_missed_deadlines
+     10. resume_prediction
+     11. moodle_ics_sync
+     12. moodle_submissions_sync
 
     Update this when adding/removing a job — this is the gate.
     """
@@ -474,8 +883,8 @@ def test_apscheduler_job_count():
         and isinstance(getattr(node, "func", None), ast.Attribute)
         and getattr(node.func, "attr", "") == "add_job"
     )
-    assert add_job_calls == 14, (
-        f"Expected 14 add_job calls in scheduler.py, found {add_job_calls}. "
+    assert add_job_calls == 12, (
+        f"Expected 12 add_job calls in scheduler.py, found {add_job_calls}. "
         f"A background job may have been added or removed without updating "
         f"the state consistency gate."
     )

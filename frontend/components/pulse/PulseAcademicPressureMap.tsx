@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect } from "react";
 import {
   AlertTriangle,
   CalendarClock,
@@ -14,10 +14,12 @@ import type {
   AcademicPressureMapResponse,
   AcademicRecoveryOption,
 } from "@/lib/academic";
+import { ackVisiblePressureMap } from "@/lib/pressure-map-exposure";
 import { type TaskRow } from "@/lib/tasks";
 import {
   PRESSURE_HORIZON_OPTIONS,
   fmtHours,
+  fmtHoursText,
   fmtTiming,
   fmtTrust,
   genericPressureCopy,
@@ -29,9 +31,12 @@ import {
   durationFromLocal,
   endLocalFromDuration,
   fmtMinutes,
-  planItemsForOption,
   type PlanRow,
 } from "@/lib/pressure-map-planning";
+import {
+  pressureMapActionContract,
+  selectPressurePlanOption,
+} from "@/lib/pressure-map-options";
 import { usePressureMapPlanCommit } from "./use-pressure-map-plan-commit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,24 +100,24 @@ function PlanPreviewDialog({
         data-testid="pressure-map-plan-preview"
       >
         <DialogHeader>
-          <DialogTitle>Preview recovery plan</DialogTitle>
+          <DialogTitle>Plan draft</DialogTitle>
           <DialogDescription>
-            {option?.label ?? "Create editable focus blocks"}. Nothing is created until you lock this in.
+            {option?.label ?? "Edit study blocks"}. This draft uses the current estimate ranges and does not check free-time capacity. Nothing is created until you lock it in.
           </DialogDescription>
         </DialogHeader>
 
         {rows.length === 0 ? (
           <div className="rounded-sm border border-hairline bg-void-2/40 px-3 py-4 text-sm text-dust">
-            This option is diagnostic only right now. The selected pressure points are already planned tasks or need coverage confirmation before Barzakh creates blocks.
+            This option is diagnostic only right now. The selected pressure points are already planned tasks or need coverage confirmation before LyraOS creates blocks.
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex min-w-0 flex-col gap-3">
             {rows.map((row) => (
               <div
                 key={row.id}
                 data-testid="pressure-map-plan-row"
                 data-obligation-id={row.obligationId}
-                className="rounded-sm border border-hairline bg-void-2/35 p-3"
+                className="w-full min-w-0 max-w-full rounded-sm border border-hairline bg-void-2/35 p-3"
               >
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -126,43 +131,52 @@ function PlanPreviewDialog({
                   <button
                     data-testid="pressure-map-plan-row-toggle"
                     type="button"
+                    aria-pressed={row.enabled}
                     onClick={() => updateRow(row.id, { enabled: !row.enabled })}
-                    className="rounded-sm border border-hairline px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-dust hover:border-signal/40 hover:text-signal"
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-sm border px-3 font-mono text-[10px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal ${
+                      row.enabled
+                        ? "border-signal/50 bg-signal/10 text-signal hover:bg-signal/15"
+                        : "border-hairline bg-void/50 text-dust hover:border-signal/40 hover:text-parchment"
+                    }`}
                   >
-                    {row.enabled ? "Include" : "Discarded"}
+                    <CheckCircle2 size={12} aria-hidden="true" />
+                    {row.enabled ? "Included" : "Excluded"}
                   </button>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-[1.4fr_0.85fr_0.85fr_0.45fr]">
-                  <label className="flex flex-col gap-1">
+                <div className="grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-[1.4fr_0.85fr_0.85fr_0.45fr]">
+                  <label className="flex w-full min-w-0 max-w-full flex-col gap-1">
                     <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
                       Title
                     </span>
                     <Input
                       data-testid="pressure-map-plan-row-title"
+                      className="w-full min-w-0 max-w-full"
                       value={row.title}
                       disabled={!row.enabled || committing}
                       onChange={(event) => updateRow(row.id, { title: event.target.value })}
                     />
                   </label>
-                  <label className="flex flex-col gap-1">
+                  <label className="flex w-full min-w-0 max-w-full flex-col gap-1">
                     <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
                       Start
                     </span>
                     <Input
                       data-testid="pressure-map-plan-row-start"
+                      className="w-full min-w-0 max-w-full"
                       type="datetime-local"
                       value={row.startLocal}
                       disabled={!row.enabled || committing}
                       onChange={(event) => updateStart(row, event.target.value)}
                     />
                   </label>
-                  <label className="flex flex-col gap-1">
+                  <label className="flex w-full min-w-0 max-w-full flex-col gap-1">
                     <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
                       End
                     </span>
                     <Input
                       data-testid="pressure-map-plan-row-end"
+                      className="w-full min-w-0 max-w-full"
                       type="datetime-local"
                       value={row.endLocal}
                       disabled={!row.enabled || committing}
@@ -183,11 +197,20 @@ function PlanPreviewDialog({
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-sm border border-hairline/70 bg-void/40 px-2 py-2 text-[11px] leading-relaxed text-dust">
-                  <span className="font-mono uppercase tracking-widest text-dust-deep">
-                    Estimate source:
-                  </span>{" "}
-                  {row.estimateSource}. This is planning footprint, not execution truth.
+                <div
+                  data-testid="pressure-map-plan-row-estimate-source"
+                  className="mt-3 w-full min-w-0 max-w-full break-words rounded-sm border border-hairline/70 bg-void/40 px-2 py-2 text-[11px] leading-relaxed text-dust"
+                >
+                  <p className="text-parchment">
+                    <span className="font-medium text-signal">LyraOS&apos;s starting estimate:</span>{" "}
+                    {fmtMinutes(row.suggestedDurationMinutes)}. Edit the block if needed, then start the timer to prove it right or wrong.
+                  </p>
+                  <p className="mt-1">
+                    <span className="font-mono uppercase tracking-widest text-dust-deep">
+                      Based on:
+                    </span>{" "}
+                    {row.estimateSource}. This is planning footprint, not execution truth.
+                  </p>
                 </div>
 
                 {(row.status !== "pending" || forceCandidateId === row.id) && (
@@ -244,6 +267,12 @@ export function PulseAcademicPressureMap({
   onHorizonChange,
   taskEvidence = [],
 }: PulseAcademicPressureMapProps) {
+  useEffect(() => {
+    if (pressure) {
+      ackVisiblePressureMap(pressure);
+    }
+  }, [pressure]);
+
   const {
     previewOpen,
     previewOption,
@@ -258,26 +287,88 @@ export function PulseAcademicPressureMap({
   } = usePressureMapPlanCommit({ pressure, taskEvidence });
   const items = pressure?.items.slice(0, 4) ?? [];
   const hasItems = items.length > 0;
-  const planOption = useMemo(() => {
+  const hiddenItemCount = Math.max(0, (pressure?.items.length ?? 0) - items.length);
+  const hiddenReasonCount = Math.max(
+    0,
+    (pressure?.compression_points.length ?? 0) - 1,
+  );
+  const {
+    planOption,
+    navigationOption,
+    primaryRecoveryOption,
+    canPreviewPlan,
+    primaryIsPlanOption,
+  } = selectPressurePlanOption(pressure);
+  const primaryAction = primaryRecoveryOption
+    ? pressureMapActionContract(primaryRecoveryOption.action)
+    : null;
+  const primaryIsNavigation = primaryAction?.disposition === "navigation";
+  const primaryIsDiagnostic = primaryAction?.disposition === "diagnostic"
+    || primaryAction?.disposition === "retired_compatibility";
+  const projection = pressure?.demand_coverage_projection;
+  const calendarSummary = (() => {
+    const source = pressure?.source_summary;
+    if (!source || source.google_calendar_read_status === "not_connected") {
+      return "Google Calendar not connected.";
+    }
+    if (source.google_calendar_read_status === "unavailable") {
+      return "Google Calendar connected; this view could not be read.";
+    }
+    const knownBusy = fmtMinutes(source.calendar_busy_minutes ?? 0);
+    if (source.google_calendar_read_status === "partial") {
+      return `Google Calendar partial: ${knownBusy} known busy; more may be missing.`;
+    }
+    return `Google Calendar available: ${knownBusy} known busy.`;
+  })();
+  const largestCaveat = (() => {
     if (!pressure) return null;
-    return (
-      pressure.recovery_options.find((option) => option.action === "create_plan") ??
-      pressure.recovery_options.find((option) => option.action === "split_into_blocks") ??
-      null
-    );
-  }, [pressure]);
-  const canPreviewPlan = useMemo(() => {
-    if (!pressure || !planOption) return false;
-    return planItemsForOption(pressure, planOption).length > 0;
-  }, [pressure, planOption]);
-  const primaryRecoveryOption = pressure?.recovery_options[0] ?? null;
-  const primaryIsPlanOption =
-    primaryRecoveryOption !== null &&
-    planOption !== null &&
-    primaryRecoveryOption.action === planOption.action;
+    const coverageCount = pressure.coverage_questions.length;
+    if (coverageCount > 0) {
+      return `${coverageCount} source coverage question${coverageCount === 1 ? " keeps" : "s keep"} this range provisional.`;
+    }
+    if (pressure.source_summary.google_calendar_read_status === "partial") {
+      return "Calendar coverage is partial, so more scheduled load may be missing.";
+    }
+    if (pressure.source_summary.google_calendar_read_status === "unavailable") {
+      return "Calendar is connected but unavailable for this read.";
+    }
+    if (
+      pressure.source_summary.google_calendar_read_status === "not_connected"
+      || pressure.demand_coverage_projection.capacity_status === "unavailable_no_authority"
+    ) {
+      return "Free-time capacity is not measured; this is a demand view, not a collision forecast.";
+    }
+    return null;
+  })();
+  const orientationFacts = pressure ? [
+    pressure.compression_points[0]
+      ? {
+          label: "Main cause",
+          text: genericPressureCopy(pressure.compression_points[0].detail),
+          testId: "pressure-map-main-cause",
+        }
+      : null,
+    {
+      label: "Scope",
+      text: `${pressure.source_summary.external_obligation_count} external, ${pressure.source_summary.native_obligation_count} native, ${pressure.source_summary.academic_task_count} linked tasks, and ${pressure.source_summary.study_task_count} focus blocks. ${calendarSummary}`,
+      testId: "pressure-map-scope-summary",
+    },
+    largestCaveat
+      ? {
+          label: "Largest caveat",
+          text: largestCaveat,
+          testId: "pressure-map-largest-caveat",
+        }
+      : null,
+  ].filter((fact): fact is { label: string; text: string; testId: string } => fact !== null)
+    .slice(0, 3) : [];
 
   return (
-    <div className="terminal-panel flex h-full flex-col p-5">
+    <div
+      id="pressure-map"
+      data-testid="pressure-map"
+      className="terminal-panel flex h-full scroll-mt-6 flex-col p-5"
+    >
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <div className="font-display text-[10px] font-medium uppercase tracking-macro text-dust">
           <span className="opacity-50">[ </span>
@@ -289,6 +380,9 @@ export function PulseAcademicPressureMap({
             <button
               key={days}
               type="button"
+              aria-label={`Show ${pressureHorizonLabel(days)} pressure horizon`}
+              aria-pressed={horizonDays === days}
+              data-testid={`pressure-map-horizon-${days}`}
               onClick={() => onHorizonChange?.(days)}
               className={pressureHorizonClass(days, horizonDays)}
             >
@@ -313,66 +407,151 @@ export function PulseAcademicPressureMap({
               <CalendarClock size={16} />
             </div>
             <div className="min-w-0">
-              <p className="text-[15px] leading-snug text-parchment">
+              <p
+                data-testid="pressure-map-orientation-summary"
+                className="text-[15px] leading-snug text-parchment"
+              >
                 {genericPressureCopy(pressure.pressure_summary || pressure.headline)}
               </p>
-              <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-                {fmtHours(
-                  pressure.estimated_low_minutes,
-                  pressure.estimated_high_minutes
-                )}{" "}
-                visible load / {pressure.source_summary.external_obligation_count} external /{" "}
-                {pressure.source_summary.native_obligation_count} native /{" "}
-                {pressure.source_summary.academic_task_count} linked tasks /{" "}
-                {pressure.source_summary.study_task_count} focus blocks
-              </p>
+              <dl
+                data-testid="pressure-map-orientation-facts"
+                data-fact-count={orientationFacts.length}
+                data-calendar-read-status={pressure.source_summary.google_calendar_read_status}
+                data-calendar-busy-minutes={pressure.source_summary.calendar_busy_minutes ?? ""}
+                className="mt-2 space-y-1.5 text-[11px] leading-snug text-dust"
+              >
+                {orientationFacts.map((fact) => (
+                  <div key={fact.label} data-testid={fact.testId}>
+                    <dt className="inline font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                      {fact.label}:{" "}
+                    </dt>
+                    <dd className="inline">{fact.text}</dd>
+                    {fact.testId === "pressure-map-main-cause" && hiddenReasonCount > 0 && (
+                      <span
+                        data-testid="pressure-map-hidden-reasons"
+                        data-hidden-count={hiddenReasonCount}
+                        className="ml-1 text-dust-deep"
+                      >
+                        {hiddenReasonCount} more reason{hiddenReasonCount === 1 ? "" : "s"} also contribute.
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </dl>
             </div>
           </div>
 
-          {pressure.compression_points.length > 0 && (
-            <div className="mb-3 rounded-sm border border-hairline bg-void-2/30 px-3 py-2">
-              <div className="mb-1 flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-                <ShieldQuestion size={12} className="text-signal" />
-                Why the week feels compressed
+          {projection && (
+            <div className="mb-3 border-y border-hairline py-3">
+              <p
+                data-testid="pressure-map-remaining-demand"
+                data-low-minutes={projection.remaining_demand.low_minutes}
+                data-high-minutes={projection.remaining_demand.high_minutes}
+                className="text-[13px] leading-snug text-parchment"
+              >
+                LyraOS estimates {fmtHoursText(
+                  projection.remaining_demand.low_minutes,
+                  projection.remaining_demand.high_minutes
+                )} of study work remains in this window.
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] leading-snug">
+                <p
+                  data-testid="pressure-map-applied-coverage"
+                  data-low-minutes={projection.applied_coverage.low_minutes}
+                  data-high-minutes={projection.applied_coverage.high_minutes}
+                  className="text-dust"
+                >
+                  <span className="font-medium text-signal">
+                    {fmtHoursText(
+                      projection.applied_coverage.low_minutes,
+                      projection.applied_coverage.high_minutes
+                    )}
+                  </span>{" "}
+                  covered by linked plans
+                </p>
+                <p
+                  data-testid="pressure-map-unscheduled-demand"
+                  data-low-minutes={projection.unscheduled_demand.low_minutes}
+                  data-high-minutes={projection.unscheduled_demand.high_minutes}
+                  className="text-dust"
+                >
+                  <span className="font-medium text-ember">
+                    {fmtHoursText(
+                      projection.unscheduled_demand.low_minutes,
+                      projection.unscheduled_demand.high_minutes
+                    )}
+                  </span>{" "}
+                  not yet scheduled
+                </p>
+                {projection.unlinked_planning_context.task_count > 0 && (
+                  <p
+                    data-testid="pressure-map-unlinked-planning-context"
+                    data-task-count={projection.unlinked_planning_context.task_count}
+                    data-union-minutes={projection.unlinked_planning_context.union_minutes}
+                    className="col-span-2 text-dust"
+                  >
+                    {projection.unlinked_planning_context.task_count} academic/study block
+                    {projection.unlinked_planning_context.task_count === 1 ? " is" : "s are"}{" "}
+                    not linked to an obligation ({fmtMinutes(
+                      projection.unlinked_planning_context.union_minutes
+                    )}). LyraOS keeps {projection.unlinked_planning_context.task_count === 1 ? "it" : "them"}{" "}
+                    as planning context instead of counting {projection.unlinked_planning_context.task_count === 1 ? "it" : "them"}{" "}
+                    as demand or coverage.
+                  </p>
+                )}
               </div>
-              <p className="text-[12px] leading-snug text-dust">
-                {genericPressureCopy(pressure.compression_points[0].detail)}
+              <p
+                data-testid="pressure-map-calibration-cue"
+                className="mt-2 text-[11px] leading-snug text-dust"
+              >
+                Start the next timer to make the next estimate more yours.
               </p>
             </div>
           )}
 
           {hasItems ? (
-            <ul className="flex flex-col gap-2">
-              {items.map((item) => (
-                <li
-                  key={item.obligation_id}
-                  className={`rounded-sm border px-3 py-2 ${pressureClass(item)}`}
+            <div>
+              <ul className="flex flex-col gap-2">
+                {items.map((item) => (
+                  <li
+                    key={item.obligation_id}
+                    className={`rounded-sm border px-3 py-2 ${pressureClass(item)}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] text-parchment">
+                          {item.title}
+                        </p>
+                        <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                          {item.obligation_type} / {item.complexity_tier} /{" "}
+                          {fmtTrust(item.trust_state)}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="font-display text-[13px] text-signal">
+                          {fmtHours(
+                            item.estimate.low_minutes,
+                            item.estimate.high_minutes
+                          )}
+                        </p>
+                        <p className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                          {fmtTiming(item)}
+                        </p>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {hiddenItemCount > 0 && (
+                <p
+                  data-testid="pressure-map-hidden-items"
+                  data-hidden-count={hiddenItemCount}
+                  className="mt-2 font-mono text-[10px] uppercase tracking-widest text-dust"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] text-parchment">
-                        {item.title}
-                      </p>
-                      <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-                        {item.obligation_type} / {item.complexity_tier} /{" "}
-                        {fmtTrust(item.trust_state)}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="font-display text-[13px] text-signal">
-                        {fmtHours(
-                          item.estimate.low_minutes,
-                          item.estimate.high_minutes
-                        )}
-                      </p>
-                      <p className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
-                        {fmtTiming(item)}
-                      </p>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  +{hiddenItemCount} more obligation{hiddenItemCount === 1 ? "" : "s"} in this window
+                </p>
+              )}
+            </div>
           ) : (
             <div className="flex flex-1 items-center gap-3 rounded-sm border border-hairline bg-void-2/40 px-3 py-4 text-sm text-dust">
               <CheckCircle2 size={16} className="shrink-0 text-signal" />
@@ -380,30 +559,61 @@ export function PulseAcademicPressureMap({
             </div>
           )}
 
-          {pressure.recovery_options.length > 0 && (
-            <div className="mt-3 rounded-sm border border-signal/20 bg-signal/5 px-3 py-2">
+          {primaryRecoveryOption && primaryAction && (
+            <div
+              data-testid="pressure-map-primary-action"
+              data-action={primaryRecoveryOption.action}
+              className={`mt-3 rounded-sm px-3 py-2 ${
+              primaryIsDiagnostic
+                ? "border border-hairline bg-void-2/40"
+                : "border border-signal/20 bg-signal/5"
+              }`}
+            >
               <div className="mb-1 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-signal">
-                  <ClipboardCheck size={12} />
-                  Next recovery option
+                <div className={`flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest ${
+                  primaryIsDiagnostic ? "text-dust" : "text-signal"
+                }`}>
+                  {primaryIsDiagnostic ? (
+                    <ShieldQuestion size={12} />
+                  ) : primaryIsNavigation ? (
+                    <CalendarClock size={12} />
+                  ) : (
+                    <ClipboardCheck size={12} />
+                  )}
+                  {primaryIsDiagnostic
+                    ? "Planning note"
+                    : "Primary action"}
                 </div>
                 {primaryIsPlanOption && planOption && canPreviewPlan && (
-                  <button
+                  <Button
                     data-testid="pressure-map-preview"
                     type="button"
                     onClick={() => openPlanPreview(planOption)}
-                    className="inline-flex items-center gap-1 rounded-sm border border-signal/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/10"
+                    size="sm"
+                    className="h-8 shrink-0 rounded-sm px-3 font-mono text-[10px] uppercase tracking-widest"
                   >
-                    <ListPlus size={11} />
-                    Preview
-                  </button>
+                    <ListPlus size={13} aria-hidden="true" />
+                    {primaryAction.controlLabel}
+                  </Button>
+                )}
+                {primaryIsNavigation && primaryAction.target && (
+                  <Button
+                    asChild
+                    size="sm"
+                    className="h-8 shrink-0 rounded-sm px-3 font-mono text-[10px] uppercase tracking-widest"
+                  >
+                    <a data-testid="pressure-map-review-calendar" href={primaryAction.target}>
+                      <CalendarClock size={13} aria-hidden="true" />
+                      {primaryAction.controlLabel}
+                    </a>
+                  </Button>
                 )}
               </div>
               <p className="text-[12px] font-medium text-parchment">
-                {pressure.recovery_options[0].label}
+                {primaryRecoveryOption.label}
               </p>
               <p className="mt-1 text-[11px] leading-snug text-dust">
-                {genericPressureCopy(pressure.recovery_options[0].detail)}
+                {genericPressureCopy(primaryRecoveryOption.detail)}
               </p>
             </div>
           )}
@@ -415,21 +625,56 @@ export function PulseAcademicPressureMap({
                   <ListPlus size={12} />
                   Planning option
                 </div>
-                <button
+                <Button
                   data-testid="pressure-map-preview"
                   type="button"
                   onClick={() => openPlanPreview(planOption)}
-                  className="inline-flex items-center gap-1 rounded-sm border border-signal/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/10"
+                  size="sm"
+                  className="h-8 shrink-0 rounded-sm px-3 font-mono text-[10px] uppercase tracking-widest"
                 >
-                  <ListPlus size={11} />
-                  Preview
-                </button>
+                  <ListPlus size={13} aria-hidden="true" />
+                  Preview plan draft
+                </Button>
               </div>
               <p className="text-[12px] font-medium text-parchment">
                 {planOption.label}
               </p>
               <p className="mt-1 text-[11px] leading-snug text-dust">
                 {genericPressureCopy(planOption.detail)}
+              </p>
+            </div>
+          )}
+
+          {navigationOption && navigationOption !== primaryRecoveryOption && (
+            <div
+              data-testid="pressure-map-secondary-navigation"
+              className="mt-3 rounded-sm border border-hairline bg-void-2/30 px-3 py-2"
+            >
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-widest text-signal">
+                  <CalendarClock size={12} />
+                  Schedule context
+                </div>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 shrink-0 rounded-sm px-3 font-mono text-[10px] uppercase tracking-widest"
+                >
+                  <a
+                    data-testid="pressure-map-review-calendar"
+                    href={pressureMapActionContract(navigationOption.action).target ?? "/settings#integrations"}
+                  >
+                    <CalendarClock size={13} aria-hidden="true" />
+                    Open integrations
+                  </a>
+                </Button>
+              </div>
+              <p className="text-[12px] font-medium text-parchment">
+                {navigationOption.label}
+              </p>
+              <p className="mt-1 text-[11px] leading-snug text-dust">
+                {genericPressureCopy(navigationOption.detail)}
               </p>
             </div>
           )}

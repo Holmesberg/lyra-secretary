@@ -144,13 +144,11 @@ User-facing surfaces:
 
 Operator-only surfaces:
 
-- admin dashboard
-- JARVIS
-- OpenClaw workflows
+- operator cockpit
+- OpenClaw operator-alert relay
 - operator notifications
 - topology verification
 - exposure diagnostics and policy logs
-- Notion outbound sync/retry plumbing
 
 ## Not Shipped
 
@@ -187,9 +185,8 @@ Research/governance layer:
   -> insights, diagnostics, predictions, and policy audits
 
 Operator-only layer:
-  JARVIS
-  OpenClaw
-  admin diagnostics
+  operator cockpit
+  OpenClaw operator-alert relay
   operator notifications
 ```
 
@@ -298,7 +295,7 @@ descriptive insights, bounded synthesis, and conservative prediction surfaces.
 | Database | Supabase Postgres in public runtime; SQLite for dev/tests |
 | Hot state | Redis |
 | Workers | APScheduler |
-| Operator tooling | JARVIS and OpenClaw, operator-only |
+| Operator tooling | Operator cockpit and OpenClaw operator-alert relay |
 
 ## Local Development
 
@@ -358,8 +355,7 @@ All backend routes are mounted under `/v1`.
 | `moodle.py` | Moodle iCal and Web Services integration |
 | `analytics.py` | insights, Cortex diagnostics, bias/prediction endpoints |
 | `exposures.py` | render acknowledgement and exposure utilities |
-| `jarvis.py` | operator-only JARVIS chat/confirm/health/stream |
-| `admin.py` | operator-only dashboard |
+| `operator.py` | operator cockpit, readiness, topology, and diagnostic stop/go surface |
 
 ## Governance Map
 
@@ -373,7 +369,7 @@ All backend routes are mounted under `/v1`.
 | [docs/cortex_product_research_contract_v0.md](docs/cortex_product_research_contract_v0.md) | Product/research boundary and exposure ledger doctrine |
 | [docs/adaptive_scheduling_progressive_inference.md](docs/adaptive_scheduling_progressive_inference.md) | Future-gated adaptive scheduling contract |
 | [docs/deployment_architecture.md](docs/deployment_architecture.md) | Public topology and operational deployment |
-| [docs/openclaw_orchestration_contract_v0.md](docs/openclaw_orchestration_contract_v0.md) | Operator-only OpenClaw boundary |
+| [docs/registries/mutation_surface_authority_registry.json](docs/registries/mutation_surface_authority_registry.json) | Runtime authority ownership registry |
 | [archive/appstore/summary_of_app.md](archive/appstore/summary_of_app.md) | Historical product and architecture lineage; not current governance unless promoted |
 
 ## Privacy And Security Notes

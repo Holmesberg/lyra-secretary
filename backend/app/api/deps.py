@@ -115,7 +115,7 @@ def require_operator_user(
     request: Request,
     db: Session = Depends(get_db),
 ) -> User:
-    """FastAPI dependency for operator/admin/JARVIS/diagnostic endpoints."""
+    """FastAPI dependency for operator and diagnostic endpoints."""
     return operator_user_from_scope(db, request=request)
 
 

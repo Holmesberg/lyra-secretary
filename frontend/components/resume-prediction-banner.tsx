@@ -57,7 +57,7 @@ export function ResumePredictionBanner({ prediction, onResume, onDismissed }: Pr
     ? Math.round(prediction.p75_pause_minutes)
     : null;
   const detail = isColdStart
-    ? "Quiet check-in while Barzakh learns your resume rhythm."
+    ? "Quiet check-in while LyraOS learns your resume rhythm."
     : p75 !== null
       ? `Usual resume point for similar pauses is about ${formatPausedFor(p75)}.`
       : "Resume timing came from similar pauses.";

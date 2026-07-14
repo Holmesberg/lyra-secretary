@@ -9,6 +9,13 @@ export function fmtHours(lowMinutes: number, highMinutes: number): string {
   return `${low}-${high}h`;
 }
 
+export function fmtHoursText(lowMinutes: number, highMinutes: number): string {
+  const low = Math.round(lowMinutes / 30) / 2;
+  const high = Math.round(highMinutes / 30) / 2;
+  if (low === high) return `${low} ${low === 1 ? "hour" : "hours"}`;
+  return `${low} to ${high} hours`;
+}
+
 export function fmtDue(days: number): string {
   if (days < 0) return "overdue";
   if (days < 1) return "due today";
@@ -40,11 +47,11 @@ export function pressureHorizonLabel(days: number): string {
 
 export function pressureHorizonClass(days: number, selectedDays: number): string {
   const base =
-    "rounded-sm border px-2 py-1 font-mono text-[9px] uppercase tracking-widest transition-colors";
+    "inline-flex h-8 min-w-12 items-center justify-center rounded-sm border px-3 font-mono text-[10px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-signal";
   if (selectedDays === days) {
-    return `${base} border-signal/50 bg-signal/10 text-signal`;
+    return `${base} border-signal/70 bg-signal/15 text-signal shadow-[inset_0_0_0_1px_rgba(96,236,255,0.08)]`;
   }
-  return `${base} border-hairline text-dust-deep hover:border-signal/30 hover:text-dust`;
+  return `${base} border-hairline bg-void-2/60 text-dust hover:border-signal/50 hover:bg-signal/5 hover:text-parchment`;
 }
 
 export function fmtTrust(trust: AcademicPressureItem["trust_state"]): string {
@@ -59,6 +66,7 @@ export function genericPressureCopy(copy: string): string {
     .replaceAll("visible academic load", "visible load")
     .replaceAll("academic load", "visible load")
     .replaceAll("academic pressure", "visible pressure")
+    .replaceAll("visible visible pressure", "visible pressure")
     .replaceAll("academic ranges", "visible ranges")
     .replaceAll("academic obligations", "obligations")
     .replaceAll("academic tasks", "linked tasks")

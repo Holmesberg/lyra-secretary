@@ -4,13 +4,13 @@
 **Created:** April 14, 2026 (feedback/output loop architecture lock)
 **Status:** Canonical. Any new Lyra notification surface must conform.
 
-This document is referenced by `docs/building_phases.md §Phase 4.5 Tier 1`, `docs/phase_6_architecture_backlog.md §Gradual Exposure → Notification Timing Mapping (D6)`, and the Phase 4.5 PR reviews. If you are about to add a new notification, banner, toast, or modal — read this first.
+This document is referenced by `docs/archive/legacy/planning/building_phases.md §Phase 4.5 Tier 1`, `docs/archive/legacy/planning/phase_6_architecture_backlog.md §Gradual Exposure → Notification Timing Mapping (D6)`, and the Phase 4.5 PR reviews. If you are about to add a new notification, banner, toast, or modal — read this first.
 
 ---
 
 ## Principles (Windows-style, not mobile-app-style)
 
-Lyra's notification philosophy mirrors desktop OS conventions, not mobile-app engagement patterns. The product is a measurement instrument with custodian trust properties (see `docs/phase_6_architecture_backlog.md` §Custodianship trust frame), not an engagement-driven app. Four principles, load-bearing:
+Lyra's notification philosophy mirrors desktop OS conventions, not mobile-app engagement patterns. The product is a measurement instrument with custodian trust properties (see `docs/archive/legacy/planning/phase_6_architecture_backlog.md` §Custodianship trust frame), not an engagement-driven app. Four principles, load-bearing:
 
 1. **Non-blocking.** Notifications do not interrupt the user's primary action. Timer still runs. Modal dialogs are used ONLY when a user decision is the next required step; informational output ships as toast or banner.
 2. **Dismissible.** Every surface has a visible dismiss affordance. Auto-dismiss is permitted for informational surfaces (toast). Modal and banner surfaces require explicit user action. Inline warnings persist until the underlying state changes.
@@ -32,7 +32,7 @@ Lyra has exactly four notification surface types. New notification categories mu
 - **Position:** Bottom-right of the viewport. Stacks vertically if multiple fire in quick succession (max 3 visible, older ones collapse into a "+2 more" indicator that opens `/insights` history).
 - **Affordances:** Dismiss button (×), optional "see more" link that opens the full observation in `/insights`.
 - **State:** Saved to `reflection_view_log` with `reflection_type = 'micro_mirror'`, `viewed_at`, `dismissed_at`, `dwell_seconds`.
-- **Phase 6 routing:** See `docs/phase_6_architecture_backlog.md` §D6 — extend lifespan for Type 2 users, suppress after consecutive dismissals for Type 3.
+- **Phase 6 routing:** See `docs/archive/legacy/planning/phase_6_architecture_backlog.md` §D6 — extend lifespan for Type 2 users, suppress after consecutive dismissals for Type 3.
 
 ### 2. Modal — decisional
 
@@ -65,7 +65,7 @@ Lyra has exactly four notification surface types. New notification categories mu
 
 ## Gradual Exposure Mapping (Summary)
 
-The full Phase 6 mapping of notification timing to user confrontation-readiness state is in `docs/phase_6_architecture_backlog.md` §"Gradual Exposure → Notification Timing Mapping (D6)". Pre-alpha summary for shipping reference:
+The full Phase 6 mapping of notification timing to user confrontation-readiness state is in `docs/archive/legacy/planning/phase_6_architecture_backlog.md` §"Gradual Exposure → Notification Timing Mapping (D6)". Pre-alpha summary for shipping reference:
 
 | Surface | Phase 4.5 (v1 uniform) | Phase 6 (routed) |
 |---|---|---|
@@ -102,7 +102,7 @@ Predictive notifications must conform to all four principles (non-blocking, dism
 Rules for predictive notifications:
 
 1. **Surface type.** Use toast if the notification is informational ("you usually pause now"). Use modal-equivalent (Telegram message with explicit action-choice text) if the notification is decisional. Never use banner or inline-warning for predictions — banners are for insights (past-tense), inline warnings are for correctness-critical state errors.
-2. **Research-relevant fields MUST NOT be defaulted by the notification's action path.** If the user taps "accept," the resulting state change must still route through whatever flow normally captures research-relevant fields. For pause prediction: accepting the prediction must still result in the OpenClaw agent asking `pause_initiator` and `pause_reason` — the notification does NOT supply defaults for those fields. See `docs/do_not_add.md §Predictive notifications must not default research-relevant fields`.
+2. **Research-relevant fields MUST NOT be defaulted by the notification's action path.** If the user taps "accept," the resulting state change must still route through whatever flow normally captures research-relevant fields. For pause prediction: accepting the prediction must still result in the canonical pause flow asking `pause_initiator` and `pause_reason` — the notification does NOT supply defaults for those fields. See `docs/do_not_add.md §Predictive notifications must not default research-relevant fields`.
 3. **Pre-register a Validity Threat.** Every predictive notification is a VT candidate by construction (it intervenes in the measurement). The VT entry must define distinguishing analyses that answer "did the notification change the behavior?" — not just "did users accept the notification?"
 4. **Pre-register the kill criterion at launch.** Acceptance-rate formula, threshold, window start, per-user vs aggregate — written down before any data lands. Changing the formula after data lands is indistinguishable from p-hacking.
 5. **Self-activation gate.** Predictions must not fire until the user has a minimum history depth (for pause prediction: ≥ 7 days of `pause_event` rows). Firing predictions on under-powered history produces noise that the user perceives as annoyance, tripping the kill threshold on a non-representative window.
@@ -128,7 +128,7 @@ Characteristics:
 Examples in the current / planned system:
 
 - "Insights unlock in N more sessions" progress framing at cold-start (Tier 1, `/today` empty state).
-- Archetype reveal at session 5–7 (Phase 5 pre-alpha — see `docs/building_phases.md §Pre-alpha ship list`).
+- Archetype reveal at session 5–7 (Phase 5 pre-alpha — see `docs/archive/legacy/planning/building_phases.md §Pre-alpha ship list`).
 - Reclassification prompt at session 15–20 if behavior diverges from the initial archetype (Phase 5 pre-alpha).
 - Confidence-tier transitions on `bias_factor` ("low confidence: 8/30 sessions" → "medium: 18/30" → "published: 30+").
 - Pattern-specific reveals (cascade-risk detection, optimal time-of-day detected) — Phase 6 candidates.
@@ -146,9 +146,9 @@ This pattern is compatible with the four-principle contract (non-blocking, dismi
 
 ## References
 
-- `docs/building_phases.md` §Phase 4.5 Tier 1 — shipping gate for retention architecture
-- `docs/phase_6_architecture_backlog.md` §D6 "Gradual Exposure → Notification Timing Mapping" — full routed timing table
-- `docs/phase_6_architecture_backlog.md` §D2 "Measurement-state progress is not gamification" — permitted vs rejected surfaces
+- `docs/archive/legacy/planning/building_phases.md` §Phase 4.5 Tier 1 — shipping gate for retention architecture
+- `docs/archive/legacy/planning/phase_6_architecture_backlog.md` §D6 "Gradual Exposure → Notification Timing Mapping" — full routed timing table
+- `docs/archive/legacy/planning/phase_6_architecture_backlog.md` §D2 "Measurement-state progress is not gamification" — permitted vs rejected surfaces
 - `docs/do_not_add.md` §Aggressive notification schemes — rejected patterns
 - `docs/do_not_add.md` §Gamification — rejected reward loops + PERMITTED progress framing
 - `MANIFESTO.md` §Shipping Philosophy — Retention Mechanism First — why notification surfaces are Tier 1

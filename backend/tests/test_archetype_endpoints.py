@@ -6,13 +6,50 @@ so the next bias_factor_lookup picks up the new archetype?
 """
 from datetime import datetime
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.api.v1.endpoints import users as users_module
 from app.db.models import Archetype, ArchetypeAssignment, User
 from app.main import app
 from tests.conftest import TestingSession
 
 client = TestClient(app, raise_server_exceptions=False)
+
+
+class _FakeIdempotencyRedis:
+    IDEMPOTENCY_PENDING = "__pending__"
+
+    def __init__(self):
+        self.values = {}
+
+    def _key(self, key, user_id):
+        return (int(user_id), key)
+
+    def check_idempotency(self, key, user_id=None):
+        return self.values.get(self._key(key, user_id))
+
+    def is_idempotency_pending(self, value):
+        return value == self.IDEMPOTENCY_PENDING
+
+    def reserve_idempotency(self, key, ttl_seconds=30, user_id=None):
+        scoped = self._key(key, user_id)
+        if scoped in self.values:
+            return False
+        self.values[scoped] = self.IDEMPOTENCY_PENDING
+        return True
+
+    def set_idempotency(
+        self,
+        key,
+        response_json,
+        ttl_seconds=30,
+        user_id=None,
+    ):
+        self.values[self._key(key, user_id)] = response_json
+
+    def clear_idempotency(self, key, user_id=None):
+        return int(self.values.pop(self._key(key, user_id), None) is not None)
 
 
 def _seed_archetypes(db) -> None:
@@ -50,6 +87,15 @@ def _make_user(db, email: str) -> int:
     return u.user_id
 
 
+def _disciplined_lark_payload():
+    return {
+        "meq": [5, 4, 4, 4, 5],
+        "bfi_c": [5, 1],
+        "bscs": [5, 1, 1, 1, 1, 5, 1, 5, 1, 1, 5, 1, 1],
+        "gp": [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    }
+
+
 def test_submit_survey_scores_and_writes_assignment():
     """POST /survey with max-morning, high-discipline answers → disciplined_lark."""
     db = TestingSession()
@@ -65,12 +111,7 @@ def test_submit_survey_scores_and_writes_assignment():
     # low GP (all 1 → total 9).
     resp = client.post(
         "/v1/users/me/archetype/survey",
-        json={
-            "meq": [5, 4, 4, 4, 5],
-            "bfi_c": [5, 1],
-            "bscs": [5, 1, 1, 1, 1, 5, 1, 5, 1, 1, 5, 1, 1],
-            "gp": [1, 1, 1, 1, 1, 1, 1, 1, 1],
-        },
+        json=_disciplined_lark_payload(),
         headers={"X-User-Id": str(uid)},
     )
     assert resp.status_code == 200, resp.text
@@ -93,6 +134,130 @@ def test_submit_survey_scores_and_writes_assignment():
         assert assignment.skipped_at is None
         assert assignment.raw_responses is not None
         assert assignment.raw_responses["meq"] == [5, 4, 4, 4, 5]
+    finally:
+        db.close()
+
+
+def test_survey_request_key_is_user_scoped_and_preserves_explicit_retakes(
+    monkeypatch,
+):
+    fake_redis = _FakeIdempotencyRedis()
+    monkeypatch.setattr(users_module, "RedisClient", lambda: fake_redis)
+    db = TestingSession()
+    try:
+        _seed_archetypes(db)
+        first_uid = _make_user(db, "idempotent-survey-first@example.com")
+        second_uid = _make_user(db, "idempotent-survey-second@example.com")
+    finally:
+        db.close()
+
+    shared_key = "survey-retry-1"
+    first_headers = {
+        "X-User-Id": str(first_uid),
+        "X-Idempotency-Key": shared_key,
+    }
+    first = client.post(
+        "/v1/users/me/archetype/survey",
+        json=_disciplined_lark_payload(),
+        headers=first_headers,
+    )
+    replay = client.post(
+        "/v1/users/me/archetype/survey",
+        json=_disciplined_lark_payload(),
+        headers=first_headers,
+    )
+    other_user = client.post(
+        "/v1/users/me/archetype/survey",
+        json=_disciplined_lark_payload(),
+        headers={
+            "X-User-Id": str(second_uid),
+            "X-Idempotency-Key": shared_key,
+        },
+    )
+    retake = client.post(
+        "/v1/users/me/archetype/survey",
+        json=_disciplined_lark_payload(),
+        headers={
+            "X-User-Id": str(first_uid),
+            "X-Idempotency-Key": "survey-retake-2",
+        },
+    )
+
+    assert first.status_code == 200, first.text
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == first.json()
+    assert other_user.status_code == 200, other_user.text
+    assert retake.status_code == 200, retake.text
+    db = TestingSession()
+    try:
+        assert (
+            db.query(ArchetypeAssignment)
+            .filter(ArchetypeAssignment.user_id == first_uid)
+            .count()
+            == 2
+        )
+        assert (
+            db.query(ArchetypeAssignment)
+            .filter(ArchetypeAssignment.user_id == second_uid)
+            .count()
+            == 1
+        )
+    finally:
+        db.close()
+
+
+def test_latest_assignment_order_is_deterministic_for_me_and_skip():
+    db = TestingSession()
+    try:
+        _seed_archetypes(db)
+        uid = _make_user(db, "latest-assignment-order@example.com")
+        assigned_at = datetime.utcnow()
+        db.add_all(
+            [
+                ArchetypeAssignment(
+                    user_id=uid,
+                    archetype_id="diffuse_average",
+                    assigned_at=assigned_at,
+                    completed=False,
+                    skipped_at=assigned_at,
+                ),
+                ArchetypeAssignment(
+                    user_id=uid,
+                    archetype_id="disciplined_lark",
+                    assigned_at=assigned_at,
+                    completed=True,
+                    skipped_at=None,
+                    raw_responses=_disciplined_lark_payload(),
+                ),
+            ]
+        )
+        user = db.query(User).filter(User.user_id == uid).one()
+        user.archetype_id = "disciplined_lark"
+        db.commit()
+    finally:
+        db.close()
+
+    me = client.get("/v1/users/me", headers={"X-User-Id": str(uid)})
+    skipped = client.post(
+        "/v1/users/me/archetype/skip",
+        headers={"X-User-Id": str(uid)},
+    )
+
+    assert me.status_code == 200, me.text
+    assert me.json()["archetype_assignment_completed"] is True
+    assert skipped.status_code == 200, skipped.text
+    assert skipped.json()["completed"] is False
+    db = TestingSession()
+    try:
+        assert (
+            db.query(ArchetypeAssignment)
+            .filter(ArchetypeAssignment.user_id == uid)
+            .count()
+            == 3
+        )
+        assert db.query(User).filter(User.user_id == uid).one().archetype_id == (
+            "diffuse_average"
+        )
     finally:
         db.close()
 
@@ -195,10 +360,67 @@ def test_survey_rejects_out_of_range_meq_item():
         },
         headers={"X-User-Id": str(uid)},
     )
-    # ValueError from the scorer bubbles as 500. Pydantic won't catch
-    # it because the min/max validators only check list length, not
-    # item values (items have different scales per position).
-    assert resp.status_code >= 400
+    assert resp.status_code == 422
+
+    db = TestingSession()
+    try:
+        user = db.query(User).filter(User.user_id == uid).one()
+        assert user.archetype_id is None
+        assert (
+            db.query(ArchetypeAssignment)
+            .filter(ArchetypeAssignment.user_id == uid)
+            .count()
+            == 0
+        )
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize(
+    ("instrument", "invalid_values"),
+    [
+        ("bfi_c", [0, 3]),
+        ("bscs", [3] * 12 + [6]),
+        ("gp", [3] * 8 + [0]),
+    ],
+)
+def test_survey_rejects_each_out_of_range_instrument_without_writes(
+    instrument,
+    invalid_values,
+):
+    db = TestingSession()
+    try:
+        _seed_archetypes(db)
+        uid = _make_user(db, f"range-{instrument}-test@example.com")
+    finally:
+        db.close()
+
+    payload = {
+        "meq": [3, 3, 3, 3, 3],
+        "bfi_c": [3, 3],
+        "bscs": [3] * 13,
+        "gp": [3] * 9,
+    }
+    payload[instrument] = invalid_values
+    resp = client.post(
+        "/v1/users/me/archetype/survey",
+        json=payload,
+        headers={"X-User-Id": str(uid)},
+    )
+
+    assert resp.status_code == 422
+    db = TestingSession()
+    try:
+        user = db.query(User).filter(User.user_id == uid).one()
+        assert user.archetype_id is None
+        assert (
+            db.query(ArchetypeAssignment)
+            .filter(ArchetypeAssignment.user_id == uid)
+            .count()
+            == 0
+        )
+    finally:
+        db.close()
 
 
 def test_get_me_surfaces_archetype_fields():

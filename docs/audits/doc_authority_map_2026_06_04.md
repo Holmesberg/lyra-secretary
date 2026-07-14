@@ -31,7 +31,7 @@ cleaned up.
 5. Active contracts:
    - `docs/cortex_contract_v0.md`
    - `docs/cortex_product_research_contract_v0.md`
-   - `docs/provider_adapter_contract.md`
+   - `docs/archive/legacy/provider_academic/provider_adapter_contract.md`
    - `docs/calibration_contract.md`
    - pressure/exposure/output/security contracts.
 6. Active doctrine and assumption registers:
@@ -40,7 +40,7 @@ cleaned up.
    - `docs/context_switching_footprint_hypothesis.md`
    - `docs/tightened_docs/*`
 7. Current product-maintenance guidance:
-   - `docs/core_product_loop_wave_plan.md`
+   - `docs/archive/legacy/planning/core_product_loop_wave_plan.md`
    - subordinate to items 1-6.
 8. External orientation:
    - `README.md`
@@ -48,9 +48,9 @@ cleaned up.
    - `docs/professor_review_packet.md`
    - public AI-readable files.
 9. Historical or roadmap context:
-   - `docs/building_phases.md`
-   - `docs/project_history.md`
-   - `docs/phase_6_architecture_backlog.md`
+   - `docs/archive/legacy/planning/building_phases.md`
+   - `docs/archive/legacy/history/project_history.md`
+   - `docs/archive/legacy/planning/phase_6_architecture_backlog.md`
    - old strategic decisions.
 10. No implementation authority:
     - `docs/parked/*`
@@ -91,12 +91,12 @@ the doc can constrain implementation when not superseded by a higher layer.
 - `docs/current_transition_state.md`, after authorizing/context split
 - `docs/cortex_contract_v0.md`
 - `docs/cortex_product_research_contract_v0.md`
-- `docs/provider_adapter_contract.md`
+- `docs/archive/legacy/provider_academic/provider_adapter_contract.md`
 - `docs/calibration_contract.md`
 - `docs/behavioral_instrumentation_doctrine.md`
 - `docs/product_research_assumption_register.md`
 - `docs/tightened_docs/*`
-- `docs/core_product_loop_wave_plan.md`, only as subordinate product-maintenance
+- `docs/archive/legacy/planning/core_product_loop_wave_plan.md`, only as subordinate product-maintenance
   guidance.
 
 ## Parked Memory Only
@@ -107,9 +107,9 @@ Treat these as memory unless a new active plan promotes them:
 - `docs/parked_ideas.md`
 - `docs/parked_governance_specs.md`
 - `docs/insight_mechanisms_post_retention.md`
-- `docs/phase_6_architecture_backlog.md`
-- `docs/building_phases.md`, unless refreshed
-- `docs/project_history.md`
+- `docs/archive/legacy/planning/phase_6_architecture_backlog.md`
+- `docs/archive/legacy/planning/building_phases.md`, unless refreshed
+- `docs/archive/legacy/history/project_history.md`
 - `archive/*`
 - ignored `LyraOS/` vault.
 
@@ -117,17 +117,17 @@ Treat these as memory unless a new active plan promotes them:
 
 Priority:
 
-1. `docs/building_phases.md`
+1. `docs/archive/legacy/planning/building_phases.md`
    - mark historical/superseded.
 2. `docs/AGENT_HANDOFF.md`
    - mark onboarding/context; update stale instructions.
 3. `docs/parked_ideas.md`
    - mark historical/parked and remove active language.
-4. `docs/deadline_mechanism_design.md`
+4. `docs/archive/legacy/provider_academic/deadline_mechanism_design.md`
    - mark historical/implemented foundation or active only if re-promoted.
-5. `docs/academic_execution_substrate.md`
+5. `docs/archive/legacy/provider_academic/academic_execution_substrate.md`
    - clarify no hidden/passive measurement authority.
-6. `docs/academic_asset_velocity_and_evidence_fusion_plan.md`
+6. `docs/archive/legacy/provider_academic/academic_asset_velocity_and_evidence_fusion_plan.md`
    - park passive telemetry expansion.
 7. `frontend/public/lyraos.md` and `frontend/public/llms.txt`
    - mark derivative external orientation with freshness date.
@@ -164,7 +164,7 @@ For code/product work:
 1. `README.md`
 2. `docs/AUTHORITY.md`
 3. `docs/current_transition_state.md`
-4. `docs/core_product_loop_wave_plan.md`
+4. `docs/archive/legacy/planning/core_product_loop_wave_plan.md`
 5. relevant active contract
 6. relevant tests/runtime files
 

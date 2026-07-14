@@ -106,7 +106,7 @@ export function CalibrationNudgeCard({
         <button
           data-testid="new-task-nudge-use"
           type="button"
-          disabled={!nudge.exposureId}
+          disabled={!nudge.exposureId || !nudge.backendReady}
           className="rounded-sm bg-signal/20 px-2 py-1 text-[11px] font-medium text-parchment transition-colors hover:bg-signal/30 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={onUseSuggested}
         >
@@ -115,7 +115,7 @@ export function CalibrationNudgeCard({
         <button
           data-testid="new-task-nudge-keep"
           type="button"
-          disabled={!nudge.exposureId}
+          disabled={!nudge.exposureId || !nudge.backendReady}
           className="rounded-sm bg-void-2 px-2 py-1 text-[11px] text-dust transition-colors hover:bg-void hover:text-parchment disabled:cursor-not-allowed disabled:opacity-50"
           onClick={onKeepEstimate}
         >

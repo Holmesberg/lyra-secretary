@@ -30,25 +30,16 @@
  * onboarding_completed_at as a binary signal regardless of which path
  * stamped it.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  BrainDumpBindingSuggestion,
-  BrainDumpFailedItem,
-  BrainDumpParsedItem,
-  commitBrainDump,
-  parseBrainDump,
-} from "@/lib/brain-dump";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, CalendarPlus, PencilLine, Trash2 } from "lucide-react";
 import {
   bindingKey,
-  buildBrainDumpCommitBindings,
-  buildBrainDumpCommitItems,
-  chooseBrainDumpBinding,
+  brainDumpBindingTargetLabel,
   failureCopy,
-  initialBindingChoices,
-  localIsoNow,
-  type BrainDumpBindingChoice,
+  pad2,
 } from "@/lib/brain-dump-ui";
 import { api } from "@/lib/api";
+import { useBrainDumpFlow } from "@/lib/hooks/use-brain-dump-flow";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -57,20 +48,27 @@ interface Props {
   onSkipped: () => void;
 }
 
-type Step = "dump" | "confirm" | "review_failures";
-
 /** Onboarding-specific retry hints; shared failure wording lives in brain-dump-ui. */
 function retryCopy(hint: string | null): string {
   switch (hint) {
     case "schedule_tomorrow_same_time":
       return "Try scheduling tomorrow at the same time.";
     case "edit_when_local":
-      return "You can edit this in /today after onboarding.";
+      return "Add or correct the date, then retry.";
     case "remove_deadline_binding":
       return "Unbind from the deadline and retry.";
     default:
       return "";
   }
+}
+
+function toDateTimeInput(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 16);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+    date.getDate(),
+  )}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
 function formatWhen(iso: string | null): string {
@@ -86,138 +84,58 @@ function formatWhen(iso: string | null): string {
   });
 }
 
-function bindingTargetLabel(b: BrainDumpBindingSuggestion): string {
-  return b.target_kind === "existing_deadline"
-    ? "existing obligation"
-    : "deadline";
-}
-
 export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
-  const [step, setStep] = useState<Step>("dump");
-  const [rawText, setRawText] = useState("");
-  const [items, setItems] = useState<BrainDumpParsedItem[]>([]);
-  const [bindings, setBindings] = useState<BrainDumpBindingSuggestion[]>(
-    [],
-  );
-  // task_item_id → "yes" | "no" | null (null = not answered yet).
-  // Pre-populated from parser tier: tier1_auto starts "yes",
-  // tier2_ask starts unanswered (block requires resolution).
-  const [bindingChoices, setBindingChoices] = useState<
-    Record<string, BrainDumpBindingChoice>
-  >({});
-  const [parsing, setParsing] = useState(false);
-  const [committing, setCommitting] = useState(false);
   const [skipping, setSkipping] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // LYR-114 fix 2026-04-30: failures from /commit surface so the
-  // user knows which items didn't land before exiting onboarding.
-  const [failures, setFailures] = useState<BrainDumpFailedItem[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const commitInFlightRef = useRef(false);
+  const {
+    step,
+    setStep,
+    rawText,
+    setRawText,
+    items,
+    bindingChoices,
+    failures,
+    parsing,
+    committing,
+    error,
+    setError,
+    handleParse,
+    handleCommit,
+    setBindingChoice,
+    updateItem,
+    removeItem,
+    retryFailedItems,
+    bindingsForTask,
+    tier2Unanswered,
+    canMoveFailedToTomorrow,
+  } = useBrainDumpFlow({
+    emptyTextError: "Type something first — at least one task or deadline.",
+    emptyResultError:
+      "Couldn't pull anything out of that. Try one item per line: 'submit assignment Friday', 'read chapter 3 tomorrow', etc.",
+    parseError: "Parse failed. Try again.",
+    commitError: "Couldn't save your plan.",
+    onCleanCommit: () => onCompleted(),
+  });
 
   useEffect(() => {
     if (step === "dump") textareaRef.current?.focus();
   }, [step]);
 
-  // Bindings grouped by task_item_id for fast lookup in the preview.
-  const bindingsForTask = useMemo(() => {
-    const map: Record<string, BrainDumpBindingSuggestion[]> = {};
-    for (const b of bindings) {
-      (map[b.task_item_id] ||= []).push(b);
-    }
-    return map;
-  }, [bindings]);
-
-  const tier2Unanswered = useMemo(
-    () =>
-      bindings.some(
-        (b) => b.tier === "tier2_ask" && !bindingChoices[bindingKey(b)],
-      ),
-    [bindings, bindingChoices],
-  );
-
-  async function handleParse() {
-    if (parsing) return;
-    setError(null);
-    if (!rawText.trim()) {
-      setError("Type something first — at least one task or deadline.");
-      return;
-    }
-    setParsing(true);
-    try {
-      const res = await parseBrainDump(rawText, localIsoNow());
-      setItems(res.items);
-      setBindings(res.bindings);
-
-      // Tier 1 auto-bindings start pre-checked "yes". Tier 2 asks
-      // start unanswered — user must explicitly tap.
-      setBindingChoices(initialBindingChoices(res.bindings));
-
-      if (res.items.length === 0) {
-        setError(
-          "Couldn't pull anything out of that. Try one item per line: " +
-            "'submit assignment Friday', 'read chapter 3 tomorrow', etc.",
-        );
-        setParsing(false);
-        return;
-      }
-      setStep("confirm");
-    } catch (e: unknown) {
-      setError(
-        e instanceof Error ? e.message : "Parse failed. Try again.",
-      );
-    } finally {
-      setParsing(false);
-    }
-  }
-
-  async function handleCommit() {
-    if (committing || commitInFlightRef.current) return;
-    commitInFlightRef.current = true;
-    setError(null);
-    setCommitting(true);
-    try {
-      const commitItems = buildBrainDumpCommitItems(items);
-      const commitBindings = buildBrainDumpCommitBindings(
-        bindings,
-        bindingChoices,
-      );
-      const res = await commitBrainDump(commitItems, commitBindings);
-      // LYR-114 fix: pause exit on failures so the user actually
-      // sees which items didn't land. If everything committed
-      // cleanly, exit onboarding as before.
-      if (res.failed_items && res.failed_items.length > 0) {
-        setFailures(res.failed_items);
-        setStep("review_failures");
-        commitInFlightRef.current = false;
-        setCommitting(false);
-        return;
-      }
-      onCompleted();
-    } catch (e: unknown) {
-      commitInFlightRef.current = false;
-      setError(
-        e instanceof Error ? e.message : "Couldn't save your plan.",
-      );
-      setCommitting(false);
-    }
-  }
-
   async function handleSkip() {
     if (parsing || committing || skipping) return;
     setError(null);
     setSkipping(true);
-    onSkipped();
-    void api("/v1/users/me/skip-onboarding", { method: "POST" });
-  }
-
-  function setBindingChoice(
-    binding: BrainDumpBindingSuggestion,
-    choice: "yes" | "no",
-  ) {
-    setBindingChoices((s) =>
-      chooseBrainDumpBinding(s, bindings, binding, choice),
-    );
+    try {
+      await api("/v1/users/me/skip-onboarding", { method: "POST" });
+      onSkipped();
+    } catch (skipError) {
+      setError(
+        skipError instanceof Error
+          ? skipError.message
+          : "Couldn't skip onboarding. Try again.",
+      );
+      setSkipping(false);
+    }
   }
 
   return (
@@ -229,8 +147,10 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
           </p>
           <h1 className="mt-6 text-3xl font-semibold leading-tight tracking-tight text-parchment md:text-4xl">
             {step === "dump"
-              ? "Barzakh starts learning from the first plan you write."
-              : "Look right? Lock it in."}
+              ? "LyraOS starts learning from the first plan you write."
+              : step === "review_failures"
+                ? "A few items need attention."
+                : "Look right? Lock it in."}
           </h1>
           <p className="mt-4 text-sm leading-relaxed text-dust md:text-base">
             {step === "dump"
@@ -238,8 +158,10 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                 "deadlines, half-thoughts. Times and dates inside the " +
                 "text get parsed automatically. You'll review before " +
                 "anything saves."
-              : "Barzakh split your dump into tasks and deadlines. " +
-                "Confirm any links between them, then save."}
+              : step === "review_failures"
+                ? "Saved items stay saved. Fix only the failed rows, or continue with what landed."
+                : "LyraOS split your dump into tasks and deadlines. " +
+                  "Confirm any links between them, then save."}
           </p>
         </div>
 
@@ -255,6 +177,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <textarea
+                  data-testid="onboarding-brain-dump-textarea"
                   ref={textareaRef}
                   value={rawText}
                   onChange={(e) => setRawText(e.target.value)}
@@ -275,13 +198,19 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
               </div>
 
               {error && (
-                <div className="rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
+                <div
+                  data-testid="onboarding-brain-dump-error"
+                  role="alert"
+                  className="rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember"
+                >
                   {error}
                 </div>
               )}
 
               <div className="mt-2 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <button
+                  data-testid="onboarding-brain-dump-skip"
+                  type="button"
                   onClick={handleSkip}
                   disabled={parsing || skipping}
                   className={cn(
@@ -292,6 +221,8 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                   {skipping ? "Skipping…" : "Skip for now"}
                 </button>
                 <button
+                  data-testid="onboarding-brain-dump-parse"
+                  type="button"
                   onClick={handleParse}
                   disabled={parsing || skipping || !rawText.trim()}
                   className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
@@ -328,9 +259,19 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                           </span>
                         )}
                       </div>
-                      <div className="mt-1 text-sm font-medium text-parchment">
-                        {it.title}
-                      </div>
+                      <label className="mt-2 flex flex-col gap-1.5">
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                          Title
+                        </span>
+                        <input
+                          data-testid={`onboarding-brain-dump-item-title-${it.item_id}`}
+                          value={it.title}
+                          onChange={(event) =>
+                            updateItem(it.item_id, { title: event.target.value })
+                          }
+                          className="rounded-sm border border-hairline-signal/30 bg-void/50 px-3 py-2 text-sm text-parchment outline-none focus:border-signal/60 focus:ring-1 focus:ring-signal/30"
+                        />
+                      </label>
                       <div className="mt-0.5 text-xs text-dust">
                         {formatWhen(it.when_local)}
                         {it.category && (
@@ -351,6 +292,63 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                           )}
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      title="Discard item"
+                      aria-label={`Discard ${it.title}`}
+                      onClick={() => removeItem(it.item_id)}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-hairline-signal/30 text-dust transition-colors hover:border-ember/50 hover:text-ember focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember/60"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  <div
+                    className={cn(
+                      "mt-3 grid gap-3",
+                      it.kind === "task"
+                        ? "sm:grid-cols-[minmax(0,1fr)_120px]"
+                        : "sm:grid-cols-1",
+                    )}
+                  >
+                    <label className="flex min-w-0 flex-col gap-1.5">
+                      <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                        {it.kind === "deadline" ? "Due" : "Start"}
+                      </span>
+                      <input
+                        data-testid={`onboarding-brain-dump-item-when-${it.item_id}`}
+                        type="datetime-local"
+                        value={toDateTimeInput(it.when_local)}
+                        onChange={(event) =>
+                          updateItem(it.item_id, {
+                            when_local: event.target.value || null,
+                          })
+                        }
+                        className="min-w-0 rounded-sm border border-hairline-signal/30 bg-void/50 px-3 py-2 font-mono text-xs text-parchment outline-none focus:border-signal/60 focus:ring-1 focus:ring-signal/30"
+                      />
+                    </label>
+                    {it.kind === "task" && (
+                      <label className="flex flex-col gap-1.5">
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-dust-deep">
+                          Minutes
+                        </span>
+                        <input
+                          data-testid={`onboarding-brain-dump-item-duration-${it.item_id}`}
+                          type="number"
+                          min={1}
+                          max={720}
+                          value={it.duration_minutes ?? ""}
+                          onChange={(event) =>
+                            updateItem(it.item_id, {
+                              duration_minutes: event.target.value
+                                ? Number(event.target.value)
+                                : null,
+                            })
+                          }
+                          className="rounded-sm border border-hairline-signal/30 bg-void/50 px-3 py-2 font-mono text-xs text-parchment outline-none focus:border-signal/60 focus:ring-1 focus:ring-signal/30"
+                        />
+                      </label>
+                    )}
                   </div>
 
                   {it.duration_source === "research_prior_v1" &&
@@ -369,7 +367,7 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                           className="flex items-center justify-between gap-2"
                         >
                           <p className="text-xs text-dust">
-                            Link to {bindingTargetLabel(b)}{" "}
+                            Link to {brainDumpBindingTargetLabel(b, "deadline")}{" "}
                             <span className="text-parchment">
                               &ldquo;{b.deadline_title}&rdquo;
                             </span>
@@ -441,6 +439,8 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                 </span>
               )}
               <button
+                data-testid="onboarding-brain-dump-lock-in"
+                type="button"
                 onClick={handleCommit}
                 disabled={committing || items.length === 0 || tier2Unanswered}
                 className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
@@ -454,14 +454,18 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
         {step === "review_failures" && (
           <div className="flex flex-col gap-6">
             <p className="text-sm text-dust">
-              Your plan landed.{" "}
+              The items that worked are already saved. Only the rows below
+              will be retried. {" "}
               <span className="text-ember">
                 {failures.length} item{failures.length === 1 ? "" : "s"}{" "}
                 couldn&apos;t be scheduled
               </span>{" "}
               and need attention:
             </p>
-            <ul className="flex flex-col gap-3 rounded-sm border border-ember/30 bg-ember/[0.04] p-4">
+            <ul
+              data-testid="onboarding-brain-dump-failures"
+              className="flex flex-col gap-3 rounded-sm border border-ember/30 bg-ember/[0.04] p-4"
+            >
               {failures.map((f) => (
                 <li key={f.item_id} className="text-sm">
                   <div className="font-mono text-xs text-parchment">
@@ -477,15 +481,37 @@ export function OnboardingFlow({ userEmail, onCompleted, onSkipped }: Props) {
                 </li>
               ))}
             </ul>
-            <div className="flex justify-end pt-1">
+            <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap sm:justify-end">
+              {canMoveFailedToTomorrow && (
+                <button
+                  data-testid="onboarding-brain-dump-move-failed-to-tomorrow"
+                  type="button"
+                  onClick={() =>
+                    retryFailedItems({ movePastToTomorrow: true })
+                  }
+                  className="cyber-pill cyber-pill-compact inline-flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
+                >
+                  <CalendarPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Move to tomorrow
+                </button>
+              )}
               <button
-                onClick={() => {
-                  setFailures([]);
-                  onCompleted();
-                }}
-                className="cyber-pill cyber-pill-compact cyber-pill-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
+                data-testid="onboarding-brain-dump-edit-failed-items"
+                type="button"
+                onClick={() => retryFailedItems()}
+                className="cyber-pill cyber-pill-compact inline-flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
               >
-                Continue to Barzakh
+                <PencilLine className="h-3.5 w-3.5" aria-hidden="true" />
+                Edit failed items
+              </button>
+              <button
+                data-testid="onboarding-brain-dump-continue-saved"
+                type="button"
+                onClick={onCompleted}
+                className="cyber-pill cyber-pill-compact cyber-pill-primary inline-flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal/70"
+              >
+                Continue with saved items
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             </div>
           </div>

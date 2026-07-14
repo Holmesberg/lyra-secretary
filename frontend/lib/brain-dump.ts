@@ -99,12 +99,25 @@ export interface BrainDumpFailedItem {
   retry_hint: string | null;
 }
 
+export interface BrainDumpCommitOutcome {
+  item_id: string;
+  kind: BrainDumpItemKind;
+  title: string;
+  status: "created" | "reused" | "rejected" | "failed";
+  canonical_id: string | null;
+  reason: string | null;
+  detail: string | null;
+  retry_hint: string | null;
+}
+
 export interface BrainDumpCommitResponse {
   tasks_created: number;
   deadlines_created: number;
   bindings_applied: number;
   task_ids: string[];
   deadline_ids: string[];
+  /** Optional while a newer frontend is paired with a lagging backend. */
+  outcomes?: BrainDumpCommitOutcome[];
   /** LYR-114 fix 2026-04-30: empty when all items committed cleanly. */
   failed_items: BrainDumpFailedItem[];
 }

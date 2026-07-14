@@ -196,7 +196,7 @@ gates shipping Phase 6 on:
 - [ ] For (c), pull every `reflection_view_log` event for each user
       (once the table ships) and classify dwell/dismiss patterns by the
       four user-response types (Calibrator / Acknowledger / Illusion
-      Preserver / Overcorrector — see `docs/phase_6_architecture_backlog.md`).
+      Preserver / Overcorrector — see `docs/archive/legacy/planning/phase_6_architecture_backlog.md`).
 - [ ] Which V1/V3/V5 composite signals are strong enough to drive the
       Phase 6 router? List signals by discrimination quality, not by the
       order they appear in the backlog.
@@ -228,8 +228,8 @@ gates shipping Phase 6 on:
 ## References
 
 - `MANIFESTO.md` §The Validity Register — VT-1 through VT-16
-- `docs/building_phases.md` §Phase 5 / Phase 5.5 gate
-- `docs/phase_6_architecture_backlog.md` §D2, D3, D6, readiness-drift,
+- `docs/archive/legacy/planning/building_phases.md` §Phase 5 / Phase 5.5 gate
+- `docs/archive/legacy/planning/phase_6_architecture_backlog.md` §D2, D3, D6, readiness-drift,
   interruption-chain visualization
 - `docs/do_not_add.md` §Hardcoded default values, §Gamification
 - `notebooks/operator_analytics.ipynb` — the notebook that runs each question

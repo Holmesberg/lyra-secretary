@@ -129,6 +129,75 @@ def test_timer_overflow_web_copy_is_not_openclaw_reply_copy(db, monkeypatch):
     assert fake_redis.set_keys
 
 
+def test_five_minute_timer_overflow_enqueues_when_still_running_after_grace(db, monkeypatch):
+    _clean(db)
+    now = now_utc()
+    user = User(
+        user_id=8804,
+        email="timer-overflow-five-minute@example.test",
+        is_operator=False,
+        created_at=now,
+    )
+    task = Task(
+        task_id=str(uuid4()),
+        user_id=user.user_id,
+        title="Five minute task",
+        category="study",
+        planned_start_utc=now - timedelta(minutes=11),
+        planned_end_utc=now - timedelta(minutes=6),
+        planned_duration_minutes=5,
+        state=TaskState.EXECUTING,
+        source="manual",
+        created_at=now - timedelta(minutes=11),
+        last_modified_at=now - timedelta(minutes=11),
+    )
+    session = StopwatchSession(
+        session_id=str(uuid4()),
+        user_id=user.user_id,
+        task_id=task.task_id,
+        start_time_utc=now - timedelta(minutes=11),
+        total_paused_minutes=0,
+        auto_closed=False,
+    )
+    db.add_all([user, task, session])
+    db.commit()
+
+    fake_redis = _FakeRedis()
+    queued = []
+
+    monkeypatch.setattr(
+        timer_overflow,
+        "RedisClient",
+        lambda: _FakeRedisClient(fake_redis),
+    )
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: _FakeRedisClient(fake_redis),
+    )
+    monkeypatch.setattr(
+        timer_overflow,
+        "enqueue_user_notification",
+        lambda user_id, payload, **_kwargs: queued.append((user_id, payload)),
+    )
+
+    set_current_user_id(user.user_id)
+    try:
+        timer_overflow._run_for_one_user(db, user)
+    finally:
+        set_current_user_id(None)
+
+    assert len(queued) == 1
+    user_id, payload = queued[0]
+    assert user_id == user.user_id
+    assert payload["type"] == "timer_overflow"
+    assert payload["task_id"] == task.task_id
+    assert payload["session_id"] == session.session_id
+    assert payload["planned_minutes"] == 5
+    assert payload["elapsed_minutes"] == 11
+    assert fake_redis.set_keys
+
+
 class _QueueRedis:
     def __init__(self):
         self.items = []
@@ -147,6 +216,17 @@ class _QueueRedis:
 
     def lrange(self, _key, _start, _end):
         return list(self.items)
+
+    def lrem(self, _key, count, value):
+        removed = 0
+        kept = []
+        for item in self.items:
+            if item == value and (count == 0 or removed < count):
+                removed += 1
+            else:
+                kept.append(item)
+        self.items = kept
+        return removed
 
     def delete(self, _key):
         self.items = []

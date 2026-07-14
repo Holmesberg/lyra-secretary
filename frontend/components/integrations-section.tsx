@@ -41,8 +41,11 @@ import {
   type IntegrationStatus,
 } from "@/lib/integrations";
 import {
-  invalidateCalendarEventQueries,
-  invalidateDeadlineQueries,
+  invalidateIntegrationAccountCaches,
+  invalidateCalendarIntegrationCaches,
+  invalidateIntegrationStatusCaches,
+  invalidateMoodleConnectCaches,
+  invalidateMoodleFeedSyncCaches,
   queryKeys,
 } from "@/lib/query-keys";
 
@@ -58,14 +61,14 @@ const ERROR_COPY: Record<string, string> = {
     "The session that started the flow isn't the one that finished it. Sign out and back in, then try again.",
   user_denied: "You declined calendar access. No harm done — try again anytime.",
   testing_mode_block:
-    "Your Google account isn't on Barzakh's OAuth test-user list yet. Ask the operator to add it.",
+    "Your Google account isn't on LyraOS's OAuth test-user list yet. Ask the operator to add it.",
   google_error: "Google returned an error during consent.",
   token_exchange_failed:
     "Couldn't exchange the consent code with Google. Try again.",
   no_refresh_token:
     "Google didn't return a refresh token. Disconnect anything leftover at myaccount.google.com/permissions, then try again.",
   account_mismatch:
-    "The Google account you consented with doesn't match your Barzakh account. Use the same account on both sides.",
+    "The Google account you consented with doesn't match your LyraOS account. Use the same account on both sides.",
   backend_store_failed:
     "Got consent from Google but couldn't save it on the server. Try again.",
 };
@@ -95,8 +98,9 @@ export function IntegrationsSection() {
         kind: "success",
         title: `${humanName(connected)} connected.`,
       });
-      qc.invalidateQueries({ queryKey: queryKeys.integrations });
-      qc.invalidateQueries({ queryKey: queryKeys.me });
+      void (connected === "google_calendar"
+        ? invalidateCalendarIntegrationCaches(qc)
+        : invalidateIntegrationAccountCaches(qc));
       cleanQueryParams();
     } else if (errored) {
       const text = ERROR_COPY[reason] || "Something went wrong connecting.";
@@ -131,9 +135,7 @@ export function IntegrationsSection() {
     setCardErrors((e) => ({ ...e, [id]: undefined }));
     try {
       await disconnectIntegration(id);
-      qc.invalidateQueries({ queryKey: queryKeys.integrations });
-      qc.invalidateQueries({ queryKey: queryKeys.me });
-      invalidateCalendarEventQueries(qc);
+      void invalidateCalendarIntegrationCaches(qc);
       setBanner({
         kind: "success",
         title: `${humanName(id)} disconnected.`,
@@ -145,11 +147,11 @@ export function IntegrationsSection() {
   }
 
   return (
-    <Card>
+    <Card id="integrations" tabIndex={-1}>
       <CardHeader>
         <CardTitle>Integrations</CardTitle>
         <p className="text-xs text-dust">
-          Connect Barzakh to the tools you already use. Each integration asks
+          Connect LyraOS to the tools you already use. Each integration asks
           for its own permission when you turn it on — we don&apos;t
           request anything at sign-in.
         </p>
@@ -230,10 +232,7 @@ export function IntegrationsSection() {
                     setIcalSyncBusy(true);
                     try {
                       const res = await syncMoodleNow();
-                      qc.invalidateQueries({
-                        queryKey: queryKeys.integrations,
-                      });
-                      qc.invalidateQueries({ queryKey: queryKeys.deadlines });
+                      void invalidateMoodleFeedSyncCaches(qc);
                       const created = res.created ?? 0;
                       const updated = res.updated ?? 0;
                       const parts: string[] = [];
@@ -261,10 +260,7 @@ export function IntegrationsSection() {
                     setWsSyncBusy(true);
                     try {
                       const res = await syncMoodleWSNow();
-                      qc.invalidateQueries({
-                        queryKey: queryKeys.integrations,
-                      });
-                      qc.invalidateQueries({ queryKey: queryKeys.deadlines });
+                      void invalidateMoodleFeedSyncCaches(qc);
                       const backfilled =
                         res.backfilled_completed +
                         (res.backfilled_completion_candidates ?? 0) +
@@ -307,9 +303,7 @@ export function IntegrationsSection() {
                     setWsDisconnectBusy(true);
                     try {
                       await disconnectMoodleWS();
-                      qc.invalidateQueries({
-                        queryKey: queryKeys.integrations,
-                      });
+                      void invalidateIntegrationStatusCaches(qc);
                       setBanner({
                         kind: "success",
                         title: "Submission auto-detect disconnected.",
@@ -338,9 +332,7 @@ export function IntegrationsSection() {
           }
           existingWSConnected={!!stateById.get("moodle")?.ws_connected}
           onConnected={(result) => {
-            qc.invalidateQueries({ queryKey: queryKeys.integrations });
-            qc.invalidateQueries({ queryKey: queryKeys.deadlines });
-            invalidateDeadlineQueries(qc);
+            void invalidateMoodleConnectCaches(qc);
             const ical = result?.ical ?? null;
             const wsOn = !!result?.ws;
             const parts: string[] = [];
@@ -490,7 +482,7 @@ function MoodleDataFeeds({
       ) : (
         <FeedRow
           label="Submissions"
-          description="Show submission evidence from Moodle - imports past items Barzakh missed"
+          description="Show submission evidence from Moodle - imports past items LyraOS missed"
           dotState="idle"
           statusLine={<span>not enabled</span>}
           primaryAction={

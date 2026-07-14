@@ -7,11 +7,9 @@ It does not infer comprehension, intent, or causality.
 from __future__ import annotations
 
 import hashlib
-import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any, Literal, Optional
 from uuid import uuid4
 
@@ -30,9 +28,13 @@ from app.db.models import (
     Task,
     TaskExecutionCorrection,
 )
+from app.services.exposure_policy import (
+    DEFAULT_HORIZON_POLICY_VERSION,
+    SIGNAL_TARGETS,
+    affected_categories_for_target,
+    load_horizon_policy,
+)
 from app.utils.time_utils import strip_tz
-
-DEFAULT_HORIZON_POLICY_VERSION = "exposure_horizon_v0"
 
 ExposureState = Literal["NONE", "EXPOSED", "INTERVENTION", "UNKNOWN"]
 ExposureTerminalState = Literal[
@@ -44,17 +46,10 @@ ExposureTerminalState = Literal[
 ]
 
 NON_ACTIONABLE_MISSING_RENDER_STATUSES = frozenset(
-    {"suppressed", "delayed", "failed", "queued"}
+    {"suppressed", "delayed", "failed", "queued", "reserved"}
 )
 
-SIGNAL_TARGETS = {
-    "duration_behavior",
-    "planning_estimate",
-    "readiness_self_report",
-    "reflection_self_report",
-    "pause_behavior",
-    "deadline_behavior",
-}
+UNCLAIMED_DECISION_STATUSES = frozenset({"reserved"})
 
 LEGACY_REFLECTION_CATEGORY = {
     "micro_mirror": "behavioral_insight",
@@ -136,36 +131,6 @@ def classify_exposure_terminal_state(
 def content_hash(content_snapshot: str) -> str:
     """Deterministic hash of the exact rendered stimulus."""
     return hashlib.sha256(content_snapshot.encode("utf-8")).hexdigest()
-
-
-def load_horizon_policy(version: str = DEFAULT_HORIZON_POLICY_VERSION) -> dict[str, Any]:
-    """Load a versioned exposure horizon policy from JSON config.
-
-    Keeping policy in data, not code branches, makes policy drift visible and
-    testable. Callers should fail closed if the policy cannot be loaded.
-    """
-    path = Path(__file__).resolve().parents[1] / "core" / "exposure_horizon_policies.json"
-    with path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-    return data["policies"][version]
-
-
-def affected_categories_for_target(
-    policy: dict[str, Any], signal_target: str
-) -> dict[str, int]:
-    """Return exposure categories and horizons that can affect a signal target."""
-    horizons = policy.get("horizons_minutes", {})
-    supported_targets = set(policy.get("all_supported_targets", []))
-    out: dict[str, int] = {}
-    for category, target_map in horizons.items():
-        if signal_target in target_map:
-            out[category] = int(target_map[signal_target])
-        elif (
-            "all_supported_targets" in target_map
-            and signal_target in supported_targets
-        ):
-            out[category] = int(target_map["all_supported_targets"])
-    return out
 
 
 def record_decision(
@@ -571,6 +536,7 @@ def baseline_clean_task_ids(
             .filter(
                 ReflectionViewLog.user_id.in_(user_ids),
                 ReflectionViewLog.event_class == "impression",
+                ReflectionViewLog.viewed_at.is_not(None),
                 ReflectionViewLog.reflection_type.in_(reflection_types),
                 ReflectionViewLog.fired_at >= min_start,
                 ReflectionViewLog.fired_at <= max_end,
@@ -658,6 +624,8 @@ def _bulk_v0_state_dirty(
     categories: dict[str, int],
 ) -> bool:
     for decision in decisions:
+        if decision.decision_status in UNCLAIMED_DECISION_STATUSES:
+            continue
         if decision.exposure_category not in categories:
             continue
         horizon = categories[decision.exposure_category]
@@ -793,6 +761,8 @@ def _check_v0_events(
 
     suppression_only = False
     for decision in decisions:
+        if decision.decision_status in UNCLAIMED_DECISION_STATUSES:
+            continue
         horizon = categories[decision.exposure_category]
         window_start = event_time - timedelta(minutes=horizon)
         if decision.eligible_at < window_start:
@@ -964,6 +934,7 @@ def _first_legacy_reflection(
         .filter(
             ReflectionViewLog.user_id == user_id,
             ReflectionViewLog.event_class == "impression",
+            ReflectionViewLog.viewed_at.is_not(None),
             ReflectionViewLog.reflection_type.in_(types),
             ReflectionViewLog.fired_at >= start,
             ReflectionViewLog.fired_at <= event_time,

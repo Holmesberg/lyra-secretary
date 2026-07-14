@@ -85,16 +85,43 @@ ask not only "can this compute?" but "what human trajectory does this steer?"
 | Output surface translator | What may this user-facing surface publish? | Evidence eligibility. |
 | Pressure Map | Where should repair attention go? | Automatic task/calendar mutation or student-risk scoring. |
 | Exposure Ledger | What behavior-shaping output was shown or suppressed? | Universal behavioral memory. |
-| Agent council / parked JARVIS / OpenClaw | What should a human consider? | Silent doctrine, code, or runtime mutation. |
+| Agent council / parked JARVIS / reasoning adapters | What should a human consider? | Silent doctrine, code, or runtime mutation. |
 
 `docs/single_authority_contract.md` adds the stricter cross-surface rule:
 one owner per truth class, many producers, many views, one mutation path, and
-one claim path. If future AI synthesis is reopened, OpenClaw/GPT is the
-preferred reasoning host, but it remains downstream of Admission/Coverage,
-EvidencePacket packaging, ClaimCompiler, and output-surface policy. This
-identifies preferred future ownership only. It does not authorize runtime AI
-synthesis, model integration, prompt execution, user-facing draft generation,
-or OpenClaw-to-product wiring. OpenClaw/GPT is not a mutation owner.
+one claim path. If future AI synthesis is reopened, the product-facing
+boundary is:
+
+```text
+LyraOS
+-> ReasoningRuntimeContract
+-> OpenClawAdapter
+```
+
+`ReasoningRuntimeContract` is downstream of the Admission/Coverage Gate and
+`EvidencePacket` packaging. It returns a structured draft upstream of
+`ClaimCompiler` and output-surface policy; those deterministic owners may
+reject, constrain, suppress, or publish the draft. `OpenClawAdapter` is a
+candidate adapter, not product truth, mutation, publication, or clean-data
+authority. This identifies a parked architecture direction only. It does not
+authorize runtime AI synthesis, model integration, prompt execution,
+user-facing draft generation, or adapter-to-product wiring.
+
+Concept notes may use `EvidenceAdmissionGate` and `OutputClaimCompiler` as
+future interface names. They are aliases for the existing Admission/Coverage
+Gate and ClaimCompiler authority classes, not additional owners.
+
+The repository-wide candidate inventory, method-selection ladder, free-tier
+distillation path, and explicit no-AI zones are documented in
+`docs/concepts/ai_capability_completion_map.md`. That concept note cannot
+authorize code by itself.
+
+The intended future auth boundary is per-user reasoning-runtime connection
+state. LyraOS must not hold model-provider API keys, ChatGPT passwords, OAuth
+tokens, refresh tokens, or provider cookies, and must not fall back to a shared
+account, direct API billing, or a local model during the prerequisite phase.
+Future provider and auth strategies require separate approval, security review,
+provenance compatibility review, and implementation plan.
 
 The current refactor-risk snapshot is recorded in
 `docs/audits/refactor_spaghetti_audit_2026_06_29.md`. That audit is
@@ -110,8 +137,11 @@ The S1a safety-rail registries are:
 - `docs/registries/identity_scoping_ownership.md`
 - `docs/registries/refactor_stabilization_ledger.md`
 
-`scripts/scan_authority_surfaces.py` is report-only until S1c explicitly
-promotes selected findings into hard gates.
+`scripts/scan_authority_surfaces.py` remains report-only by default, but S1c
+has promoted selected allowlisted modes into CI hard gates. CI currently fails
+on missing mutation-surface owners and worker-job write drift via
+`--fail-on-missing --fail-on-worker-write-drift`. New hard-fail modes require
+explicit owner exceptions or allowlists before promotion.
 
 The parked uncertainty-reduction council synthesis is recorded in
 `docs/parked/uncertainty_reduction_computation_council_2026_06_29.md`. It may
@@ -140,6 +170,40 @@ psychological explanations for why a user switched tasks.
 Baseet and Moodle are provider edges. They may preserve local vocabulary for UI,
 but Cortex, clean-data admission, ClaimCompiler, and adaptive logic must consume
 provider-blind primitives.
+
+### Standing Freeze Doctrine
+
+These rules apply to every freeze-closure seam, even when a seam-specific plan
+does not repeat them:
+
+- Freeze remains active. Do not add runtime AI synthesis,
+  ReasoningRuntimeContract/OpenClawAdapter product wiring, new user-facing insight types,
+  behavior-transition equations, causal pressure-return claims,
+  productivity/focus/motivation/avoidance scores, passive tracking, new
+  provider adapters, schema migrations, or new public behavioral claims without
+  explicit user approval and a new plan.
+- Exposure doctrine is global. Queue insertion is not exposure. Delivery is not
+  exposure. Browser render creates render truth. Dismissal, acknowledgement,
+  action, expiry, suppression, or `lost_unrendered` create terminal
+  lifecycle/outcome truth. No seam may treat queued, delivered, or pending
+  disappearance as render proof.
+- Verification account roles are fixed. `LYRA_COOKIE_ALINASSERSABRY` is the
+  legacy env name for the operator account and must remain read-only. It may
+  verify `/operator`, topology, privacy, and readiness only. It must never
+  create/edit/delete tasks, start timers, acknowledge notifications, dismiss
+  user-facing surfaces, or mutate product state.
+- `LYRA_COOKIE_HOLMESBERG` is the legacy env name for the mutable chaos/dogfood
+  account. It may create tasks, deadlines, timers, brain dumps, pressure-map
+  previews, and other synthetic rows only with unique prefixes and
+  cleanup/void proof.
+- Browser verification must use real account cookies unless a test is
+  explicitly labeled fixture-only. Mocked auth, API interception, seeded
+  fixtures, and local-current proxying may support proof, but they must be
+  labeled and may not be cited as hosted-public user proof.
+- Cleanup is part of verification, not cleanup after verification. A mutable
+  browser run is incomplete until synthetic rows, timers, Redis/runtime residue,
+  and gated cleanup gaps are recorded as cleaned, voided, or explicitly
+  harmless.
 
 ---
 

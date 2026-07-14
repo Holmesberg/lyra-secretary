@@ -190,7 +190,7 @@ async function testMalformedJsonDeadLetters() {
 function testRelayTextFallbackAndSanitizer() {
   assert.equal(
     relayText({ type: "operator_alert", source: "unit" }),
-    "[warn] [openclaw.relay] Barzakh operator notification lacked message text. type=operator_alert source=unit",
+    "[warn] [openclaw.relay] LyraOS operator notification lacked message text. type=operator_alert source=unit",
   );
   const sanitized = sanitizeRelayReason(
     "https://api.telegram.org/botSECRET/sendMessage?token=BAD&message=PRIVATE_PAYLOAD",

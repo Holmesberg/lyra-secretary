@@ -5,11 +5,13 @@ import { useQuery } from "@tanstack/react-query";
 import {
   getInsights,
   type Insight,
+  type InsightsResponse,
   type SuppressedInsightGenerator,
 } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 import { ArchetypeInsightsCard } from "@/components/archetype-insights-card";
 import { ackExposureRender } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 
 // Confidence-tier → brand text token. Replaces the traffic-light
 // (green/yellow/red) palette the page shipped with; brand-unification
@@ -77,6 +79,44 @@ function ConfidenceBar({
 }
 
 const CONFIDENCE_THRESHOLDS: Record<string, number> = { low: 6, medium: 15 };
+const INSIGHTS_RENDER_ACK_RETRY_MS = [250, 750, 1500, 3000, 6000];
+const pendingInsightsRenderAcks = new Set<string>();
+const acknowledgedInsightsRenders = new Set<string>();
+
+function acknowledgeInsightsRender(data: InsightsResponse, attempt = 0) {
+  const exposureId = data.exposure_id;
+  const snapshot = data.render_snapshot;
+  if (
+    !data.ready ||
+    !exposureId ||
+    !snapshot ||
+    pendingInsightsRenderAcks.has(exposureId) ||
+    acknowledgedInsightsRenders.has(exposureId)
+  ) {
+    return;
+  }
+
+  pendingInsightsRenderAcks.add(exposureId);
+  void ackExposureRender(exposureId, {
+    surfaceId: data.surface_id || "analytics.insights",
+    clientEventId: `analytics.insights:${exposureId}`,
+    contentSnapshot: snapshot,
+    keepalive: true,
+  })
+    .then((ok) => {
+      if (ok) {
+        acknowledgedInsightsRenders.add(exposureId);
+        return;
+      }
+      const delay = INSIGHTS_RENDER_ACK_RETRY_MS[attempt];
+      if (delay !== undefined) {
+        globalThis.setTimeout(() => {
+          acknowledgeInsightsRender(data, attempt + 1);
+        }, delay);
+      }
+    })
+    .finally(() => pendingInsightsRenderAcks.delete(exposureId));
+}
 
 function FeaturedCard({ insight }: { insight: Insight }) {
   const label = insight.title ?? ID_LABELS[insight.id] ?? insight.id;
@@ -194,16 +234,16 @@ function SuppressedInsightsPanel({
 
 export default function InsightsPage() {
   const { data, isLoading, error } = useQuery({
-    queryKey: ["insights"],
+    queryKey: queryKeys.insights,
     queryFn: getInsights,
     staleTime: 60_000,
   });
 
   useEffect(() => {
-    if (data?.ready && data.exposure_id) {
-      void ackExposureRender(data.exposure_id);
+    if (data) {
+      acknowledgeInsightsRender(data);
     }
-  }, [data?.ready, data?.exposure_id]);
+  }, [data]);
 
   if (isLoading) {
     return (
@@ -309,7 +349,7 @@ export default function InsightsPage() {
         <div className="rounded-sm border border-hairline bg-void-2/60 p-5">
           <p className="text-sm leading-relaxed text-dust">
             {data?.message ??
-              "Insights are unlocked. Barzakh is holding these cards until there is new clean evidence after this hold. Complete new cleanly stopped sessions to reopen this surface."}
+              "Insights are unlocked. LyraOS is holding these cards until there is new clean evidence after this hold. Complete new cleanly stopped sessions to reopen this surface."}
           </p>
           <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
             {reopenLabel}

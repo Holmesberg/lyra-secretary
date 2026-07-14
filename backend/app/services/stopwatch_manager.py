@@ -12,6 +12,15 @@ from app.db.models import PauseEvent, StopwatchSession, Task, TaskState
 from app.core.exceptions import InvalidStateTransitionError
 from app.services.active_stopwatch_store import ActiveStopwatchStore
 from app.services.interruption_metrics import task_interruption_metrics
+from app.services.notification_lifecycle import (
+    supersede_pending_prediction_notifications,
+)
+from app.services.notification_queue import remove_user_notifications
+from app.services.stopwatch_reflections import (
+    _compute_calibration_nudge as _reflection_compute_calibration_nudge,
+    _compute_micro_mirror as _reflection_compute_micro_mirror,
+    _derive_current_pause_anchor as _reflection_derive_current_pause_anchor,
+)
 from app.services.task_manager import TaskManager
 from app.utils.tasks_range_cache import invalidate_user_ranges
 from app.utils.redis_client import RedisClient
@@ -37,15 +46,6 @@ STALE_PAUSE_RESOLUTION_FLAG = "user_resolved_stale_pause"
 STALE_PAUSE_TASK_STATUS = "stale_resolved"
 
 
-def _format_micro_duration(minutes: Optional[int]) -> str:
-    if minutes is None:
-        return "unknown"
-    if minutes >= 60:
-        hours, mins = divmod(int(minutes), 60)
-        return f"{hours}h {mins:02d}m"
-    return f"{int(minutes)} min"
-
-
 def _compute_micro_mirror(task: Task, interruption_metrics=None) -> Optional[str]:
     """One-line behavioral observation on stop. Priority: initiation > delta > pauses.
 
@@ -54,46 +54,7 @@ def _compute_micro_mirror(task: Task, interruption_metrics=None) -> Optional[str
     §No guilt and MANIFESTO.md §Shipping Philosophy (narrative layer must not
     become a judgment layer; VT-21 candidate).
     """
-    delay = task.initiation_delay_minutes
-    delta = task.duration_delta_minutes
-    duration = task.executed_duration_minutes or 0
-    pauses = task.pause_count or 0
-
-    if interruption_metrics is not None:
-        pause_overhead = interruption_metrics.pause_overhead_minutes or 0
-        execution = interruption_metrics.execution_time_minutes or duration
-        span = interruption_metrics.session_span_minutes
-        if pause_overhead >= 30 and execution > 0 and pause_overhead >= execution:
-            return (
-                f"Active work: {int(execution)} min. "
-                f"Session span: {_format_micro_duration(span)}. "
-                f"Pause overhead: {_format_micro_duration(pause_overhead)}."
-            )
-
-    if delay is not None and delay > 10:
-        return f"Started {delay} min late."
-    if delay is not None and delay <= 0:
-        return "Started on time."
-    if delta is not None and delta < -20:
-        return f"Ran {abs(delta)} min over plan."
-    if delta is not None and delta > 20:
-        return f"Finished {delta} min early."
-    if pauses == 0 and duration > 30:
-        return "0 pauses this session."
-    if pauses >= 3:
-        return f"{pauses} pauses this session."
-
-    planned = task.planned_duration_minutes
-    executed = task.executed_duration_minutes
-    if planned and executed and planned > 0:
-        ratio = round(executed / planned, 2)
-        if ratio >= 1.05:
-            return f"Planned {planned} min, took {executed} — {ratio}× your estimate."
-        elif ratio <= 0.95:
-            return f"Planned {planned} min, finished in {executed}."
-        else:
-            return f"Planned {planned} min, took {executed} — right on target."
-    return None
+    return _reflection_compute_micro_mirror(task, interruption_metrics)
 
 
 def _compute_calibration_nudge(task: Task, db: Session) -> Optional[str]:
@@ -118,48 +79,7 @@ def _compute_calibration_nudge(task: Task, db: Session) -> Optional[str]:
         rows have NULL initiation_status (0/118). Production values are
         'initiated' and 'retroactive'; all non-system_error.
     """
-    if not task.category:
-        return None
-    delta = task.duration_delta_minutes
-    if delta is None:
-        return None
-    history = (
-        db.query(Task)
-        .filter(
-            Task.category == task.category,
-            Task.state == TaskState.EXECUTED,
-            Task.initiation_status != "system_error",
-            Task.voided_at.is_(None),
-            Task.executed_duration_minutes.is_not(None),
-            Task.task_id != task.task_id,
-        )
-        .all()
-    )
-    n = len(history)
-    if n < 3:
-        return None
-    avg_delta = sum(t.duration_delta_minutes for t in history) / n
-    underestimate_count = sum(1 for t in history if t.duration_delta_minutes < 0)
-    direction = "over" if delta < 0 else "under"
-    return (
-        f"{task.title} ran {abs(delta)} min {direction} plan. "
-        f"Your '{task.category}' category avg: {avg_delta:+.0f} min across {n} sessions. "
-        f"Prior '{task.category}' sessions ran over plan {underestimate_count}/{n} times."
-    )
-
-
-def _derive_current_pause_anchor(
-    pause_state: Optional[dict],
-) -> tuple[int, Optional[str]]:
-    """Return current pause age plus the original pause timestamp string."""
-    if not pause_state or not pause_state.get("paused_at"):
-        return 0, None
-    try:
-        paused_at_dt = strip_tz(datetime.fromisoformat(pause_state["paused_at"]))
-        delta = (now_utc() - paused_at_dt).total_seconds()
-        return max(0, int(delta)), pause_state["paused_at"]
-    except (ValueError, TypeError):
-        return 0, None
+    return _reflection_compute_calibration_nudge(task, db)
 
 
 class StopwatchManager:
@@ -204,6 +124,140 @@ class StopwatchManager:
                 type(exc).__name__,
             )
 
+    def _clear_terminal_stopwatch_state(self, user_id: str) -> None:
+        """Best-effort cache cleanup after terminal DB truth has committed."""
+        try:
+            self.redis.clear_stopwatch_state(user_id)
+        except Exception as exc:  # noqa: BLE001 - DB terminal state is canonical
+            logger.warning(
+                "stopwatch.stop: terminal Redis cleanup failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
+    def _supersede_prediction_prompts(
+        self,
+        *,
+        user_id: str,
+        transition: str,
+        invalidations: list[tuple[str | None, tuple[str, ...]]],
+    ) -> None:
+        """Fail-soft terminalization after canonical stopwatch truth commits."""
+        notification_ids: set[str] = set()
+        try:
+            for session_id, notification_types in invalidations:
+                if not session_id:
+                    continue
+                notification_ids.update(
+                    supersede_pending_prediction_notifications(
+                        self.db,
+                        user_id=int(user_id),
+                        session_id=str(session_id),
+                        notification_types=notification_types,
+                    )
+                )
+            if notification_ids:
+                self.db.commit()
+        except Exception as exc:  # noqa: BLE001 - timer truth is already canonical
+            self.db.rollback()
+            logger.warning(
+                "stopwatch.%s: prediction lifecycle invalidation failed for user %s: %s",
+                transition,
+                user_id,
+                type(exc).__name__,
+            )
+            return
+
+        if not notification_ids:
+            return
+        try:
+            remove_user_notifications(int(user_id), sorted(notification_ids))
+        except Exception as exc:  # noqa: BLE001 - durable terminal state fails closed
+            logger.warning(
+                "stopwatch.%s: prediction queue prune failed for user %s: %s",
+                transition,
+                user_id,
+                type(exc).__name__,
+            )
+
+    def _publish_committed_start(
+        self,
+        *,
+        user_id: str,
+        session: StopwatchSession,
+        task: Task,
+    ) -> None:
+        """Best-effort Redis publication after start truth has committed."""
+        try:
+            self.redis.activate_stopwatch(
+                user_id=user_id,
+                session_id=session.session_id,
+                task_id=task.task_id,
+                title=task.title,
+                start_time=session.start_time_utc.isoformat(),
+            )
+        except Exception as exc:  # noqa: BLE001 - DB start state is canonical
+            logger.warning(
+                "stopwatch.start: Redis publication failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
+    def _publish_committed_pause(
+        self,
+        *,
+        user_id: str,
+        session: StopwatchSession,
+        paused_at: datetime,
+    ) -> None:
+        """Best-effort Redis publication after pause truth has committed."""
+        try:
+            self.redis.set_pause_state(
+                user_id,
+                session.session_id,
+                paused_at.isoformat(),
+            )
+        except Exception as exc:  # noqa: BLE001 - DB pause state is canonical
+            logger.warning(
+                "stopwatch.pause: Redis publication failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
+    def _clear_committed_resume_pause_state(self, user_id: str) -> None:
+        """Best-effort Redis cleanup after resume truth has committed."""
+        try:
+            self.redis.clear_pause_state(user_id)
+        except Exception as exc:  # noqa: BLE001 - DB resume state is canonical
+            logger.warning(
+                "stopwatch.resume: Redis cleanup failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
+    def _publish_committed_switch(
+        self,
+        *,
+        user_id: str,
+        session: StopwatchSession,
+        task: Task,
+    ) -> None:
+        """Best-effort Redis publication after switch truth has committed."""
+        try:
+            self.redis.activate_stopwatch(
+                user_id=user_id,
+                session_id=session.session_id,
+                task_id=task.task_id,
+                title=task.title,
+                start_time=session.start_time_utc.isoformat(),
+            )
+        except Exception as exc:  # noqa: BLE001 - DB switch state is canonical
+            logger.warning(
+                "stopwatch.switch: Redis publication failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -216,7 +270,7 @@ class StopwatchManager:
 
         Used when a task was voided out from under an active session — we
         just want the row marked closed so _recover_from_db stops finding
-        it. No duration/delta math, no micro-mirror, no Notion sync.
+        it. No duration/delta math, no micro-mirror, no external sync.
 
         Also closes any open pause_event rows for this session (resumed_at_utc
         IS NULL) so pause-history analytics don't see dangling opens. The
@@ -486,13 +540,11 @@ class StopwatchManager:
         self.db.refresh(session)
         self.db.refresh(task)
 
-        self.redis.set_active_stopwatch(
-            user_id=user_id,
-            session_id=session.session_id,
-            task_id=task.task_id,
-            title=task.title,
-            start_time=session.start_time_utc.isoformat()
-        )
+        # A status poll can recover the paused parent from DB after the old
+        # Redis state is cleared but before this child is published. Activate
+        # the child and clear any recovered parent pause marker atomically so
+        # the child cannot inherit the parent's paused state.
+        self._publish_committed_start(user_id=user_id, session=session, task=task)
         try:
             self.redis.cache_undo_action(
                 "start_stopwatch",
@@ -515,6 +567,18 @@ class StopwatchManager:
             self.redis.clear_undo_data(task.task_id, user_id=user_id)
         except Exception as e:
             logger.warning("stopwatch.start: undo cache write failed: %s", e)
+
+        if active_before_start:
+            self._supersede_prediction_prompts(
+                user_id=user_id,
+                transition="start",
+                invalidations=[
+                    (
+                        active_before_start.get("session_id"),
+                        ("pause_prediction", "resume_prediction"),
+                    )
+                ],
+            )
 
         return session, task, is_future_task
 
@@ -554,13 +618,19 @@ class StopwatchManager:
                 if paused_at_raw
                 else strip_tz(session.paused_at_utc)
             )
-            return {
+            result = {
                 "paused": True,
                 "elapsed_minutes": self._active_elapsed(session, existing_pause_state),
                 "paused_at": paused_at or now_utc(),
                 "pause_reason": session.pause_reason or pause_reason,
                 "pause_initiator": session.pause_initiator or pause_initiator,
             }
+            self._supersede_prediction_prompts(
+                user_id=user_id,
+                transition="pause",
+                invalidations=[(session.session_id, ("pause_prediction",))],
+            )
+            return result
 
         session = self._get_session(active["session_id"])
         now = now_utc()
@@ -603,23 +673,16 @@ class StopwatchManager:
         # write latency on the pause path.
         self.db.commit()
         self._invalidate_task_ranges(user_id)
-
-        # Notion sync queued for the background notion_retry_job (every
-        # 5 min) instead of blocking the request thread — the inline
-        # sync_task() call used to take 1-8 s, which the frontend
-        # awaited before re-enabling the Pause button (perceived as
-        # the "8-10 s state-switch delay" per Apr 16 Investigation 3).
-        # Same retry queue used by create_task / reschedule_task.
-        if task and task.state == TaskState.PAUSED:
-            try:
-                self.redis.queue_notion_sync(
-                    task.task_id, {"action": "sync"},
-                    user_id=user_id,
-                )
-            except Exception as e:
-                logger.error(f"Notion enqueue failed on pause: {e}", exc_info=True)
-
-        self.redis.set_pause_state(user_id, session.session_id, now.isoformat())
+        self._publish_committed_pause(
+            user_id=user_id,
+            session=session,
+            paused_at=now,
+        )
+        self._supersede_prediction_prompts(
+            user_id=user_id,
+            transition="pause",
+            invalidations=[(session.session_id, ("pause_prediction",))],
+        )
 
         return {
             "paused": True,
@@ -639,11 +702,17 @@ class StopwatchManager:
         pause_state = self.redis.get_pause_state(user_id)
         if not pause_state:
             session = self._get_session(active["session_id"])
-            return {
+            result = {
                 "resumed": True,
                 "paused_minutes": 0.0,
                 "total_paused_minutes": session.total_paused_minutes or 0.0,
             }
+            self._supersede_prediction_prompts(
+                user_id=user_id,
+                transition="resume",
+                invalidations=[(session.session_id, ("resume_prediction",))],
+            )
+            return result
 
         now = now_utc()
         # strip_tz: Redis-stored ISO may parse to aware (see time_utils).
@@ -705,18 +774,12 @@ class StopwatchManager:
         # Single commit for session + task + pause_event close.
         self.db.commit()
         self._invalidate_task_ranges(user_id)
-
-        # Notion sync queued to background (same reasoning as pause()).
-        if task.state == TaskState.EXECUTING:
-            try:
-                self.redis.queue_notion_sync(
-                    task.task_id, {"action": "sync"},
-                    user_id=user_id,
-                )
-            except Exception as e:
-                logger.error(f"Notion enqueue failed on resume: {e}", exc_info=True)
-
-        self.redis.clear_pause_state(user_id)
+        self._clear_committed_resume_pause_state(user_id)
+        self._supersede_prediction_prompts(
+            user_id=user_id,
+            transition="resume",
+            invalidations=[(session.session_id, ("resume_prediction",))],
+        )
 
         return {
             "resumed": True,
@@ -918,27 +981,20 @@ class StopwatchManager:
         self.db.commit()
         self._invalidate_task_ranges(user_id)
 
-        # ---- Update Redis: clear old, set new ----
-        self.redis.activate_stopwatch(
+        # ---- Publish the committed target to Redis ----
+        self._publish_committed_switch(
             user_id=user_id,
-            session_id=target_session.session_id,
-            task_id=target.task_id,
-            title=target.title,
-            start_time=target_session.start_time_utc.isoformat(),
+            session=target_session,
+            task=target,
         )
-
-        # ---- Best-effort Notion sync for both ends ----
-        try:
-            if source_task_id:
-                self.redis.queue_notion_sync(
-                    source_task_id, {"action": "sync"}, user_id=user_id
-                )
-            self.redis.queue_notion_sync(
-                target.task_id, {"action": "sync"}, user_id=user_id
-            )
-        except Exception as e:
-            logger.error(f"Notion enqueue failed on switch: {e}", exc_info=True)
-
+        self._supersede_prediction_prompts(
+            user_id=user_id,
+            transition="switch",
+            invalidations=[
+                (source_session_id, ("pause_prediction",)),
+                (target_session.session_id, ("resume_prediction",)),
+            ],
+        )
         return {
             "switched": True,
             "noop": False,
@@ -1046,7 +1102,7 @@ class StopwatchManager:
         scope_outcome: Optional[str] = None,
     ) -> tuple:
         """
-        Stop active stopwatch. Returns (session, task, is_early_stop, notion_synced,
+        Stop active stopwatch. Returns (session, task, is_early_stop, legacy_external_sync,
         paused_parent, micro_mirror, calibration_nudge, mid_task_completion_pct).
 
         mid_task_completion_pct is the pre-existing completion % on the session
@@ -1109,6 +1165,13 @@ class StopwatchManager:
             session.auto_closed = True
             self.db.commit()
             self._invalidate_task_ranges(user_id)
+            self._supersede_prediction_prompts(
+                user_id=user_id,
+                transition="stop",
+                invalidations=[
+                    (session.session_id, ("pause_prediction", "resume_prediction"))
+                ],
+            )
             raise ValueError("Task was voided — session auto-closed without completion")
 
         stop_time = now_utc()
@@ -1168,14 +1231,15 @@ class StopwatchManager:
             self._invalidate_task_ranges(user_id)
             self.db.refresh(session)
             self.db.refresh(task)
-            self.redis.clear_active_stopwatch(user_id)
-            # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
-            notion_synced_zero = False
-            try:
-                self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=user_id)
-            except Exception as e:
-                logger.error(f"Notion queue failed on zero-duration skip: {e}", exc_info=True)
-            return session, task, True, notion_synced_zero, None, None, None, pre_existing_pct
+            self._clear_terminal_stopwatch_state(user_id)
+            self._supersede_prediction_prompts(
+                user_id=user_id,
+                transition="stop",
+                invalidations=[
+                    (session.session_id, ("pause_prediction", "resume_prediction"))
+                ],
+            )
+            return session, task, is_early_stop, False, None, None, None, pre_existing_pct
 
         session.end_time_utc = stop_time
         # LYR-105: same invariant on the normal stop path. Helper is
@@ -1184,7 +1248,7 @@ class StopwatchManager:
         self.db.add(session)
 
         # complete_task() sets executed_duration = (end - start).minutes (wall clock)
-        task, notion_synced = self.task_manager.complete_task(
+        task, _legacy_external_sync = self.task_manager.complete_task(
             task_id=task.task_id,
             executed_start=session.start_time_utc,
             executed_end=stop_time,
@@ -1224,7 +1288,7 @@ class StopwatchManager:
         micro_mirror = _compute_micro_mirror(task, interruption)
         calibration_nudge = _compute_calibration_nudge(task, self.db)
 
-        self.redis.clear_active_stopwatch(user_id)
+        self._clear_terminal_stopwatch_state(user_id)
 
         # Check for any paused parent session still open
         paused_parent = None
@@ -1248,7 +1312,15 @@ class StopwatchManager:
                     "paused_minutes": paused_mins,
                 }
 
-        return session, task, is_early_stop, notion_synced, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct
+        self._supersede_prediction_prompts(
+            user_id=user_id,
+            transition="stop",
+            invalidations=[
+                (session.session_id, ("pause_prediction", "resume_prediction"))
+            ],
+        )
+
+        return session, task, is_early_stop, False, paused_parent, micro_mirror, calibration_nudge, pre_existing_pct
 
     def resolve_stale_pause(
         self,
@@ -1400,6 +1472,13 @@ class StopwatchManager:
         self.db.refresh(session)
         self.db.refresh(task)
         self._invalidate_task_ranges(user_id_int)
+        self._supersede_prediction_prompts(
+            user_id=user_id,
+            transition="resolve_stale_pause",
+            invalidations=[
+                (session.session_id, ("pause_prediction", "resume_prediction"))
+            ],
+        )
 
         return {
             "resolved": True,
@@ -1530,7 +1609,7 @@ class StopwatchManager:
         # elapsed (elapsed_seconds) was always correct; this fixes the
         # paused-duration display only.
         current_pause_seconds, current_pause_started_at = (
-            _derive_current_pause_anchor(pause_state)
+            _reflection_derive_current_pause_anchor(pause_state)
         )
 
         task = (

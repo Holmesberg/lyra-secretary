@@ -271,6 +271,38 @@ def test_voided_event_not_re_stamped(db):
     assert event.resolved_at is None
 
 
+def test_void_task_terminalizes_linked_calibration_event(db, client):
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    start, end = _future_window()
+    task, _, _ = TaskManager(db).create_task(
+        title="void nudge outcome",
+        start=start,
+        end=end,
+        nudge_decision="accepted",
+        nudge_suggested_duration_minutes=90,
+        nudge_bias_factor=1.4,
+        nudge_sample_size=12,
+    )
+
+    response = client.post(
+        f"/v1/tasks/{task.task_id}/void",
+        json={"voided_reason": "test_contamination"},
+        headers={"X-User-Id": str(user.user_id)},
+    )
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    voided_task = db.query(Task).filter(Task.task_id == task.task_id).one()
+    event = (
+        db.query(CalibrationNudgeEvent)
+        .filter(CalibrationNudgeEvent.task_id == task.task_id)
+        .one()
+    )
+    assert voided_task.voided_at is not None
+    assert event.voided_at == voided_task.voided_at
+
+
 def test_complete_task_with_no_event_does_nothing(db):
     """Tasks created without a nudge complete normally — no event row exists."""
     user = _make_user(db)
@@ -343,7 +375,7 @@ def test_creation_nudge_writes_reflection_view_log(db):
     """Apr 27 drift fix — every creation-nudge fire writes a
     ReflectionViewLog row alongside the CalibrationNudgeEvent so the
     Phase 6 response-type classifier has V3 signal data when it
-    activates. Per `docs/phase_6_architecture_backlog.md:227`.
+    activates. Per `docs/archive/legacy/planning/phase_6_architecture_backlog.md:227`.
     """
     user = _make_user(db)
     set_current_user_id(user.user_id)

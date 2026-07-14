@@ -4,12 +4,17 @@ export default function TermsPage() {
       <h1>Terms of Service</h1>
       <p className="text-muted-foreground">Last updated: May 15, 2026.</p>
       <p>
-        Barzakh is pre-alpha software provided for personal planning, execution
+        LyraOS is pre-alpha software provided for personal planning, execution
         tracking, and product-research dogfood. It is provided as-is, without
         warranty.
       </p>
       <p>
-        Do not rely on Barzakh for safety-critical, medical, legal, financial,
+        Current access is trusted pre-alpha access and is not a permanent free
+        product entitlement. Pricing, availability, and access terms may change
+        before wider release.
+      </p>
+      <p>
+        Do not rely on LyraOS for safety-critical, medical, legal, financial,
         or legally binding scheduling. Insights, predictions, archetype
         proximity, and adaptive-language surfaces are bounded hypotheses from
         your traces, not professional advice or identity claims.

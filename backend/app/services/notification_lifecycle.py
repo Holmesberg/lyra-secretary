@@ -25,6 +25,7 @@ NotificationLifecycleStatus = Literal[
     "dismissed",
     "expired",
     "lost_unrendered",
+    "superseded",
 ]
 
 _STATUS_RANK = {
@@ -35,6 +36,7 @@ _STATUS_RANK = {
     "dismissed": 4,
     "expired": 4,
     "lost_unrendered": 4,
+    "superseded": 4,
 }
 
 _TIMESTAMP_FIELD = {
@@ -202,6 +204,70 @@ def transition_notifications(
         .all()
     )
     return _transition_rows(db, rows=rows, status=status)
+
+
+def non_deliverable_notification_ids(
+    db: Session,
+    *,
+    user_id: int,
+    notification_ids: Iterable[str],
+    channel: str = "web",
+) -> set[str]:
+    """Return queue IDs whose durable lifecycle is already terminal."""
+    ids = {str(notification_id) for notification_id in notification_ids if notification_id}
+    if not ids:
+        return set()
+    rows = (
+        db.query(NotificationLifecycleEvent.notification_id)
+        .filter(
+            NotificationLifecycleEvent.user_id == int(user_id),
+            NotificationLifecycleEvent.channel == channel,
+            NotificationLifecycleEvent.notification_id.in_(ids),
+            NotificationLifecycleEvent.status.in_({
+                "rendered",
+                "acted",
+                "dismissed",
+                "expired",
+                "lost_unrendered",
+                "superseded",
+            }),
+        )
+        .all()
+    )
+    return {str(row.notification_id) for row in rows}
+
+
+def supersede_pending_prediction_notifications(
+    db: Session,
+    *,
+    user_id: int,
+    session_id: str,
+    notification_types: Iterable[str],
+    channel: str = "web",
+) -> list[str]:
+    """Terminate unrendered prediction prompts invalidated by session truth."""
+    bounded_session_id = _bounded_lifecycle_id(session_id)
+    types = {
+        str(notification_type)
+        for notification_type in notification_types
+        if notification_type
+    }
+    if bounded_session_id is None or not types:
+        return []
+    rows = (
+        db.query(NotificationLifecycleEvent)
+        .filter(
+            NotificationLifecycleEvent.user_id == int(user_id),
+            NotificationLifecycleEvent.channel == channel,
+            NotificationLifecycleEvent.session_id == bounded_session_id,
+            NotificationLifecycleEvent.notification_type.in_(types),
+            NotificationLifecycleEvent.status.in_({"queued", "reserved"}),
+        )
+        .all()
+    )
+    notification_ids = [str(row.notification_id) for row in rows]
+    _transition_rows(db, rows=rows, status="superseded")
+    return notification_ids
 
 
 def _transition_rows(

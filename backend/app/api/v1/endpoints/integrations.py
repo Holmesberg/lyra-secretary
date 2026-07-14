@@ -8,7 +8,7 @@ decides status + availability.
 
 Why this exists (2026-04-22): the original design stored each
 integration's state on the `user` row (`google_refresh_token`,
-`notion_enabled`). That works for 2 integrations, breaks by 5. This
+provider-specific columns. That works for 2 integrations, breaks by 5. This
 endpoint introduces the forward-compatible shape today — callers see
 a typed list — so when we later move to a generic
 `integration_connection` table, only the query inside this function
@@ -83,15 +83,7 @@ def list_integrations(db: Session = Depends(get_db)) -> dict[str, Any]:
         "connected" if user.moodle_ics_url else "disconnected"
     )
 
-    # Notion write-direction sync is shipped but operator-only. All
-    # non-operator users see it as "Coming soon" — we're building user-
-    # facing Notion (schema-mapping UI, OAuth) in Phase 7+. When that
-    # lands, the `available` branch collapses and this returns real
-    # connected/disconnected per user.
-    notion_status = "coming_soon"
-
-    # ICS file/URL import is the Phase 7+ Priority 1 integration per
-    # docs/import_integrations_capability_map.md. No backend state yet.
+    # ICS file/URL import remains parked; see the archived integration map.
     ics_status = "coming_soon"
 
     return {
@@ -121,12 +113,6 @@ def list_integrations(db: Session = Depends(get_db)) -> dict[str, Any]:
                     _utc_iso(user.moodle_ws_last_synced_at)
                 ),
                 "ws_disconnect_reason": user.moodle_ws_disconnect_reason,
-            },
-            {
-                "id": "notion",
-                "status": notion_status,
-                "available": False,
-                "scopes": ["pages:read", "databases:read"],
             },
             {
                 "id": "ics",

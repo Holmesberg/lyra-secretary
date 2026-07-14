@@ -128,14 +128,14 @@ def test_reject_clears_deadline_for_heuristic_auto_source(db, client):
     assert refreshed.llm_binding_rejected_at is not None
 
 
-def test_reject_clears_deadline_for_llm_auto_confirmed_source(db, client):
+def test_reject_clears_deadline_for_confirmed_heuristic_source(db, client):
     user = _make_user(db)
     set_current_user_id(user.user_id)
     deadline = _make_deadline(db, user.user_id)
     task = _make_task(
         db, user.user_id,
         deadline_id=deadline.deadline_id,
-        source="llm_auto_confirmed",
+        source="heuristic_confirmed",
     )
 
     r = client.post(
@@ -150,10 +150,8 @@ def test_reject_clears_deadline_for_llm_auto_confirmed_source(db, client):
     assert refreshed.deadline_match_confidence is None
 
 
-def test_reject_alternative_keeps_current_system_auto_binding(db, client):
-    """The "Possible better match" chip's Keep Current action must not
-    undo the current binding. This protects tasks like AI Bdaya that are
-    bound to one deadline while the LLM suggests a different one."""
+def test_reject_refuses_historical_model_alternative_without_mutation(db, client):
+    """Historical model output is retained for audit, not current action."""
     user = _make_user(db)
     set_current_user_id(user.user_id)
     current = _make_named_deadline(db, user.user_id, "AI project discussion")
@@ -165,6 +163,7 @@ def test_reject_alternative_keeps_current_system_auto_binding(db, client):
         source="llm_auto_confirmed",
     )
     task.deadline_match_confidence = 0.7
+    task.llm_parse_status = "enriched"
     task.llm_alternative_suggestion = {
         "deadline_id": alternative.deadline_id,
         "title": alternative.title,
@@ -178,14 +177,14 @@ def test_reject_alternative_keeps_current_system_auto_binding(db, client):
         headers=auth_headers(user.user_id),
     )
 
-    assert r.status_code == 200
+    assert r.status_code == 409
     db.expire_all()
     refreshed = db.query(Task).filter(Task.task_id == task.task_id).first()
     assert refreshed.deadline_id == current.deadline_id
     assert refreshed.deadline_match_source == "llm_auto_confirmed"
     assert refreshed.deadline_match_confidence == 0.7
-    assert refreshed.llm_alternative_suggestion is None
-    assert refreshed.llm_binding_rejected_at is not None
+    assert refreshed.llm_alternative_suggestion is not None
+    assert refreshed.llm_binding_rejected_at is None
 
 
 def test_reject_preserves_deadline_for_user_explicit_source(db, client):
@@ -249,3 +248,132 @@ def test_reject_on_unbound_task_is_idempotent(db, client):
     refreshed = db.query(Task).filter(Task.task_id == task.task_id).first()
     assert refreshed.deadline_id is None
     assert refreshed.llm_binding_rejected_at is not None
+
+
+def test_confirm_accepts_only_current_deterministic_candidate(db, client):
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    deadline = _make_deadline(db, user.user_id)
+    task = _make_task(db, user.user_id, deadline_id=None, source=None)
+    task.llm_parse_status = "retired"
+    task.llm_inferred_deadline_id = deadline.deadline_id
+    task.llm_deadline_candidates = [
+        {
+            "deadline_id": deadline.deadline_id,
+            "title": deadline.title,
+            "confidence": 0.9,
+            "source": "heuristic_exact_title",
+        }
+    ]
+    db.commit()
+
+    response = client.post(
+        f"/v1/tasks/{task.task_id}/llm-confirm",
+        json={"accepted_fields": ["deadline"]},
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200
+    db.expire_all()
+    refreshed = db.query(Task).filter(Task.task_id == task.task_id).one()
+    assert refreshed.deadline_id == deadline.deadline_id
+    assert refreshed.deadline_match_source == "heuristic_confirmed"
+
+
+def test_confirm_rejects_historical_model_candidate(db, client):
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    deadline = _make_deadline(db, user.user_id)
+    task = _make_task(db, user.user_id, deadline_id=None, source=None)
+    task.llm_parse_status = "enriched"
+    task.llm_inferred_deadline_id = deadline.deadline_id
+    task.llm_deadline_candidates = [
+        {
+            "deadline_id": deadline.deadline_id,
+            "title": deadline.title,
+            "confidence": 0.9,
+        }
+    ]
+    db.commit()
+
+    response = client.post(
+        f"/v1/tasks/{task.task_id}/llm-confirm",
+        json={"accepted_fields": ["deadline"]},
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 409
+    db.expire_all()
+    refreshed = db.query(Task).filter(Task.task_id == task.task_id).one()
+    assert refreshed.deadline_id is None
+
+
+def test_confirm_does_not_reveal_another_users_candidate(db, client):
+    owner = _make_user(db)
+    caller = _make_user(db)
+    deadline = _make_deadline(db, owner.user_id)
+    task = _make_task(db, owner.user_id, deadline_id=None, source=None)
+    task.llm_parse_status = "retired"
+    task.llm_inferred_deadline_id = deadline.deadline_id
+    task.llm_deadline_candidates = [
+        {
+            "deadline_id": deadline.deadline_id,
+            "title": deadline.title,
+            "confidence": 0.9,
+            "source": "heuristic_exact_title",
+        }
+    ]
+    db.commit()
+
+    response = client.post(
+        f"/v1/tasks/{task.task_id}/llm-confirm",
+        json={"accepted_fields": ["deadline"]},
+        headers=auth_headers(caller.user_id),
+    )
+
+    assert response.status_code == 404
+
+
+def test_reject_preserves_deterministic_candidate_evidence(db, client):
+    user = _make_user(db)
+    set_current_user_id(user.user_id)
+    deadline = _make_deadline(db, user.user_id)
+    task = _make_task(db, user.user_id, deadline_id=None, source=None)
+    task.llm_parse_status = "retired"
+    task.llm_inferred_deadline_id = deadline.deadline_id
+    task.llm_deadline_match_confidence = 0.9
+    task.llm_deadline_candidates = [
+        {
+            "deadline_id": deadline.deadline_id,
+            "title": deadline.title,
+            "confidence": 0.9,
+            "source": "heuristic_exact_title",
+        }
+    ]
+    db.commit()
+
+    response = client.post(
+        f"/v1/tasks/{task.task_id}/reject-llm-binding",
+        headers=auth_headers(user.user_id),
+    )
+
+    assert response.status_code == 200
+    db.expire_all()
+    refreshed = db.query(Task).filter(Task.task_id == task.task_id).one()
+    assert refreshed.llm_binding_rejected_at is not None
+    assert refreshed.llm_inferred_deadline_id == deadline.deadline_id
+    assert refreshed.llm_deadline_match_confidence == 0.9
+    assert refreshed.llm_deadline_candidates[0]["source"] == "heuristic_exact_title"
+
+
+def test_reject_does_not_reveal_another_users_candidate(db, client):
+    owner = _make_user(db)
+    caller = _make_user(db)
+    task = _make_task(db, owner.user_id, deadline_id=None, source=None)
+
+    response = client.post(
+        f"/v1/tasks/{task.task_id}/reject-llm-binding",
+        headers=auth_headers(caller.user_id),
+    )
+
+    assert response.status_code == 404

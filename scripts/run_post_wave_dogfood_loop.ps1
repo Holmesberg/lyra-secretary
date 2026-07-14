@@ -75,9 +75,12 @@ function Invoke-Step {
   Write-Host ""
   Write-Host "==> $Name"
   $started = Get-Date
+  $global:LASTEXITCODE = 0
   & $Body
-  if ($LASTEXITCODE -ne 0) {
-    throw "$Name failed with exit code $LASTEXITCODE"
+  $stepSucceeded = $?
+  $stepExitCode = $global:LASTEXITCODE
+  if (-not $stepSucceeded) {
+    throw "$Name failed with exit code $stepExitCode"
   }
   $durationMs = [int]((Get-Date) - $started).TotalMilliseconds
   $summary.Add([pscustomobject]@{
@@ -312,6 +315,11 @@ function Get-ResultSummary {
     route_count_diffs = @($json.route_count_diffs)
     dashboard_snapshot_diffs = @($json.dashboard_snapshot_diffs)
     implementation_green = $json.dashboard_after_snapshot.cohort_readiness.implementation_green
+    implementation_status = $json.dashboard_after_snapshot.cohort_readiness.implementation_status
+    cohort_green = $json.dashboard_after_snapshot.cohort_readiness.cohort_green
+    cohort_status = $json.dashboard_after_snapshot.cohort_readiness.cohort_status
+    safe_to_invite_more_users = $json.dashboard_after_snapshot.cohort_readiness.safe_to_invite_more_users
+    controlled_evidence_collection_allowed = $json.dashboard_after_snapshot.cohort_readiness.controlled_evidence_collection_allowed
     exposure_without_render_count = $json.dashboard_after_snapshot.notification_lifecycle.exposure_without_render_count
     cleanup = [pscustomobject]@{
       present = $cleanupPresent
@@ -374,6 +382,39 @@ function New-EvidenceManifest {
       }
   )
   $failedResults = @($nestedResults | Where-Object { $_.ok -eq $false })
+  $countDiffs = @(
+    $nestedResults |
+      ForEach-Object {
+        $result = $_
+        @($result.count_diffs) |
+          Where-Object { $null -ne $_ } |
+          ForEach-Object {
+            [pscustomobject]@{
+              source = $result.path
+              kind = "count_diff"
+              diff = $_
+            }
+          }
+        @($result.route_count_diffs) |
+          Where-Object { $null -ne $_ } |
+          ForEach-Object {
+            [pscustomobject]@{
+              source = $result.path
+              kind = "route_count_diff"
+              diff = $_
+            }
+          }
+        @($result.dashboard_snapshot_diffs) |
+          Where-Object { $null -ne $_ } |
+          ForEach-Object {
+            [pscustomobject]@{
+              source = $result.path
+              kind = "dashboard_snapshot_diff"
+              diff = $_
+            }
+          }
+      }
+  )
   $cleanupSummaries = @($nestedResults | Where-Object { $_.cleanup.present })
   $cleanupOk = if (-not $MutableRequested) {
     $null
@@ -392,6 +433,33 @@ function New-EvidenceManifest {
       }
   )
 
+  $topologyCheck = $null
+  if ($null -ne $topologyProof) {
+    $topologyCheck = @($topologyProof.checked | Where-Object { $null -ne $_ } | Select-Object -First 1)[0]
+  }
+
+  $ciCdProofPath = $Artifacts.ci_cd_proof
+  $ciCdProof = $null
+  if (-not [string]::IsNullOrWhiteSpace($ciCdProofPath) -and (Test-Path $ciCdProofPath)) {
+    $ciCdProof = Read-JsonFile $ciCdProofPath
+  }
+
+  $gatedPaths = @()
+  if (-not $MutableRequested) {
+    $gatedPaths += "mutable_browser_proof_not_requested"
+  }
+  if ($Topology -eq "public") {
+    $gatedPaths += "hosted_public_mutable_dogfood_requires_explicit_approval"
+  }
+  if ($Mode -eq "quick") {
+    $gatedPaths += "quick_mode_skips_s1c_stack_and_mutable_browser_proof"
+  } elseif ($Mode -eq "standard") {
+    $gatedPaths += "standard_mode_skips_full_backend_suite"
+  }
+  if ($null -eq $ciCdProof) {
+    $gatedPaths += "ci_cd_proof_not_requested_or_unavailable"
+  }
+
   [pscustomobject]@{
     ok = (
       ($null -ne $topologyProof -and $topologyProof.ok -eq $true) -and
@@ -409,18 +477,60 @@ function New-EvidenceManifest {
     }
     topology_proof_path = Convert-ToRepoRelativePath $TopologyProofPath
     topology_proof = $topologyProof
+    topology_class = Get-FirstValue @($topologyCheck.topology_class, $topologyProof.topology, $Topology)
+    frontend_build_id = Get-FirstValue @($topologyCheck.frontend_build_id, $topologyProof.frontend_build_id)
+    backend_build_id = Get-FirstValue @($topologyCheck.backend_build_id, $topologyProof.backend_build_id)
+    frontend_origin = Get-FirstValue @($topologyCheck.frontend_origin, $topologyProof.frontend_origin, (Get-FrontendOriginForTopology))
+    api_origin = Get-FirstValue @($topologyCheck.api_origin, $topologyProof.api_origin, (Get-ApiOriginForTopology))
     nested_result_count = $nestedResults.Count
     failed_results = $failedResults
     nested_issues = $nestedIssues
     nested_warnings = $nestedWarnings
+    browser_issues = $nestedIssues
+    browser_warnings = $nestedWarnings
+    count_diffs = $countDiffs
+    count_diff_count = $countDiffs.Count
     cleanup = [pscustomobject]@{
       required = $MutableRequested
       ok = $cleanupOk
       summaries = @($cleanupSummaries | ForEach-Object { $_.cleanup })
     }
+    readiness = [pscustomobject]@{
+      implementation_green = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.implementation_green })
+      implementation_status = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.implementation_status })
+      cohort_green = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.cohort_green })
+      cohort_status = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.cohort_status })
+      safe_to_invite_more_users = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.safe_to_invite_more_users })
+      controlled_evidence_collection_allowed = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.controlled_evidence_collection_allowed })
+    }
+    exposure_without_render_count = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.exposure_without_render_count })
+    gated_paths = $gatedPaths
+    ci_cd_proof = if ($null -eq $ciCdProof) {
+      [pscustomobject]@{
+        requested = [bool]$IncludeCiCdProof
+        available = $false
+        path = $null
+      }
+    } else {
+      [pscustomobject]@{
+        requested = [bool]$IncludeCiCdProof
+        available = $true
+        path = Convert-ToRepoRelativePath $ciCdProofPath
+        ok = $ciCdProof.ok
+        status = $ciCdProof.status
+        failure_classification = $ciCdProof.failure_classification
+        branch = $ciCdProof.branch
+        head_sha = $ciCdProof.head_sha
+        selected_run_id = $ciCdProof.actions.selected_run.databaseId
+        selected_run_url = $ciCdProof.actions.selected_run.url
+      }
+    }
     operator = [pscustomobject]@{
       summaries = $operatorSummaries
       implementation_green = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.implementation_green })
+      implementation_status = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.implementation_status })
+      cohort_green = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.cohort_green })
+      cohort_status = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.cohort_status })
       exposure_without_render_count = Get-LastNonNullValue @($operatorSummaries | ForEach-Object { $_.exposure_without_render_count })
     }
   }
@@ -482,7 +592,11 @@ try {
         $frontend = Get-FrontendOriginForTopology
         $api = Get-ApiOriginForTopology
         $env:LYRA_COOKIE_HOLMESBERG = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_HOLMESBERG", "User")
-        node scripts\browser_insights_states_dogfood.mjs --frontend $frontend --api $api
+        $insightsArgs = @("scripts\browser_insights_states_dogfood.mjs", "--frontend", $frontend, "--api", $api)
+        if ($useProxyApi) {
+          $insightsArgs += "--proxy-api"
+        }
+        & node @insightsArgs
       }
     }
   } else {
@@ -516,15 +630,23 @@ try {
         $frontend = Get-FrontendOriginForTopology
         $api = Get-ApiOriginForTopology
         $env:LYRA_COOKIE_HOLMESBERG = [Environment]::GetEnvironmentVariable("LYRA_COOKIE_HOLMESBERG", "User")
-        node scripts\browser_insights_states_dogfood.mjs --frontend $frontend --api $api
+        $insightsArgs = @("scripts\browser_insights_states_dogfood.mjs", "--frontend", $frontend, "--api", $api)
+        if ($useProxyApi) {
+          $insightsArgs += "--proxy-api"
+        }
+        & node @insightsArgs
       }
     }
 
     if ([bool]$IncludeCalendarTableMutation) {
       Invoke-Step "Holmesberg calendar/table mutation browser dogfood" {
+        $calendarTableArgs = @("-Topology", $Topology, "-RunId", $runId, "-OutDir", (Join-Path $outDir "calendar-table-mutation"))
+        if ($Topology -eq "local-current") {
+          $calendarTableArgs += @("-LocalCurrentPort", [string]$LocalCurrentPort, "-ProxyApi", "-AssumeLocalFrontendReady")
+        }
         Invoke-CheckedScript `
           -ScriptPath ".\scripts\run_calendar_table_mutation_dogfood.ps1" `
-          -ScriptArgs @("-Topology", $Topology, "-RunId", $runId, "-OutDir", (Join-Path $outDir "calendar-table-mutation"))
+          -ScriptArgs $calendarTableArgs
       }
     }
 

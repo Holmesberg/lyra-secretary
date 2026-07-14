@@ -115,8 +115,8 @@ def test_heuristic_multi_competitive_populates_candidates_no_bind(db):
     # Confidence reflects heuristic's top score
     assert task.llm_deadline_match_confidence is not None
     assert task.llm_inferred_deadline_id in (paper_a.deadline_id, paper_b.deadline_id)
-    # Status stays 'pending' — LLM may still refine later
-    assert task.llm_parse_status == "pending"
+    # Provider runtime is retired; candidates are deterministic.
+    assert task.llm_parse_status == "retired"
 
 
 def test_short_academic_acronym_disambiguates_final_deadlines(db):
@@ -170,8 +170,7 @@ def test_explicit_deadline_id_skips_heuristic_population(db):
 
 
 def test_candidate_shape_matches_chip_expectation(db):
-    """Each candidate JSON object has deadline_id + title + confidence
-    keys — matches LlmDeadlineCandidate type the chip uses."""
+    """Each deterministic candidate carries its scorer provenance."""
     user = _make_user(db)
     set_current_user_id(user.user_id)
     _make_deadline(db, user.user_id, "Paper Draft")
@@ -180,5 +179,6 @@ def test_candidate_shape_matches_chip_expectation(db):
     task, _, _ = TaskManager(db).create_task(**_args("Paper"))
     assert task.llm_deadline_candidates is not None
     for c in task.llm_deadline_candidates:
-        assert set(c.keys()) == {"deadline_id", "title", "confidence"}
+        assert set(c.keys()) == {"deadline_id", "title", "confidence", "source"}
         assert isinstance(c["confidence"], (int, float))
+        assert c["source"].startswith("heuristic_")

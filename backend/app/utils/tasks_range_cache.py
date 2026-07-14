@@ -1,23 +1,13 @@
-"""Per-user cache for the /v1/tasks/query range response.
+"""Per-user cache for the canonical ``/v1/tasks/query`` range response.
 
-Why this exists (2026-04-29 night, follow-on from the d7993d0 latency
-sweep): /pulse v2 fires a 14-day /tasks/query range to power the
-Recovery + System Insight charts. Single Cairo→Supabase round trip but
-the underlying scan is heavier than a 1-day window. Cumulative weight
-on /pulse first-paint pushes the dashboard ~200ms slower than /today.
+Pulse, Calendar, and Table share this heavier range read. Cache entries are
+scoped by user, date window, and mutation generation. A mutating command
+advances the generation, so an older in-flight read may finish but can publish
+only into an obsolete generation. Redis failure remains a cache miss and never
+blocks the endpoint.
 
-Strategy mirrors me_cache.py:
-  * Cache the full /tasks/query response JSON for 60s, keyed by
-    (user_id, date_from, date_to).
-  * Bust on task/deadline mutations and stopwatch transitions so Pulse
-    never offers actions against stale task state.
-  * Redis-down is graceful: get/set silently fall through; the
-    endpoint runs the queries directly.
-
-TTL is 60s vs me_cache's 30s because the range data is more expensive
-to compute and less time-sensitive. The chart aggregations resample at
-day-boundaries client-side, so 60s of staleness on a 14-day series is
-imperceptible.
+Superseded payloads expire after 60 seconds. User-data purge already removes
+the complete ``tasks_range:{user_id}:*`` namespace, including generation keys.
 """
 from __future__ import annotations
 
@@ -30,39 +20,74 @@ from app.utils.redis_client import RedisClient
 logger = logging.getLogger(__name__)
 
 _CACHE_KEY_PREFIX = "tasks_range:"
-_CACHE_KEY_VERSION = "v1"
+_CACHE_KEY_VERSION = "v2"
 _DEFAULT_TTL_SECONDS = 60
 
 
-def _key(user_id: int, date_from: str, date_to: str) -> str:
-    return f"{_CACHE_KEY_PREFIX}{user_id}:{date_from}:{date_to}:{_CACHE_KEY_VERSION}"
+def _epoch_key(user_id: int) -> str:
+    return f"{_CACHE_KEY_PREFIX}{user_id}:epoch:{_CACHE_KEY_VERSION}"
+
+
+def _key(user_id: int, epoch: int, date_from: str, date_to: str) -> str:
+    return (
+        f"{_CACHE_KEY_PREFIX}{user_id}:{epoch}:"
+        f"{date_from}:{date_to}:{_CACHE_KEY_VERSION}"
+    )
+
+
+def _decode_epoch(raw: Any) -> int:
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    return int(raw or 0)
+
+
+def get_cached_range_with_epoch(
+    user_id: int, date_from: str, date_to: str
+) -> tuple[Optional[dict[str, Any]], Optional[int]]:
+    """Return the current payload and generation safe for publication."""
+    try:
+        client = RedisClient().client
+        confirmed_epoch = 0
+        for _attempt in range(2):
+            epoch = _decode_epoch(client.get(_epoch_key(user_id)))
+            key = _key(user_id, epoch, date_from, date_to)
+            raw = client.get(key)
+            confirmed_epoch = _decode_epoch(client.get(_epoch_key(user_id)))
+            if confirmed_epoch != epoch:
+                continue
+            if raw is None:
+                return None, epoch
+            try:
+                if isinstance(raw, bytes):
+                    raw = raw.decode("utf-8")
+                return json.loads(raw), epoch
+            except Exception as exc:
+                logger.warning(
+                    "tasks_range_cache: parse failed for user %s, dropping: %s",
+                    user_id,
+                    exc,
+                )
+                try:
+                    client.delete(key)
+                except Exception:
+                    pass
+                return None, epoch
+        return None, confirmed_epoch
+    except Exception as exc:
+        logger.warning(
+            "tasks_range_cache: get failed for user %s: %s",
+            user_id,
+            exc,
+        )
+        return None, None
 
 
 def get_cached_range(
     user_id: int, date_from: str, date_to: str
 ) -> Optional[dict[str, Any]]:
-    """Return cached range payload, or None on miss/error/decode-fail."""
-    try:
-        raw = RedisClient().client.get(_key(user_id, date_from, date_to))
-    except Exception as e:
-        logger.warning("tasks_range_cache: get failed for user %s: %s", user_id, e)
-        return None
-    if raw is None:
-        return None
-    try:
-        if isinstance(raw, bytes):
-            raw = raw.decode("utf-8")
-        return json.loads(raw)
-    except Exception as e:
-        logger.warning(
-            "tasks_range_cache: parse failed for user %s, dropping: %s",
-            user_id, e,
-        )
-        try:
-            RedisClient().client.delete(_key(user_id, date_from, date_to))
-        except Exception:
-            pass
-        return None
+    """Return the current cached payload, or ``None`` on miss/error."""
+    payload, _epoch = get_cached_range_with_epoch(user_id, date_from, date_to)
+    return payload
 
 
 def set_cached_range(
@@ -72,31 +97,57 @@ def set_cached_range(
     payload: dict[str, Any],
     ttl: int = _DEFAULT_TTL_SECONDS,
 ) -> None:
-    """Store a range payload with TTL. Silent on failure."""
+    """Store against the current generation. Silent on Redis failure."""
     try:
-        RedisClient().client.setex(
-            _key(user_id, date_from, date_to),
+        client = RedisClient().client
+        epoch = _decode_epoch(client.get(_epoch_key(user_id)))
+        client.setex(
+            _key(user_id, epoch, date_from, date_to),
             ttl,
             json.dumps(payload, default=str),
         )
-    except Exception as e:
-        logger.warning("tasks_range_cache: set failed for user %s: %s", user_id, e)
+    except Exception as exc:
+        logger.warning(
+            "tasks_range_cache: set failed for user %s: %s",
+            user_id,
+            exc,
+        )
+
+
+def set_cached_range_if_epoch(
+    user_id: int,
+    date_from: str,
+    date_to: str,
+    payload: dict[str, Any],
+    expected_epoch: Optional[int],
+    ttl: int = _DEFAULT_TTL_SECONDS,
+) -> bool:
+    """Publish into a captured generation; stale generations stay unread."""
+    if expected_epoch is None:
+        return False
+    try:
+        RedisClient().client.setex(
+            _key(user_id, expected_epoch, date_from, date_to),
+            ttl,
+            json.dumps(payload, default=str),
+        )
+        return True
+    except Exception as exc:
+        logger.warning(
+            "tasks_range_cache: fenced set failed for user %s: %s",
+            user_id,
+            exc,
+        )
+        return False
 
 
 def invalidate_user_ranges(user_id: int) -> None:
-    """Drop ALL cached ranges for a user. Called on TaskManager.create_task
-    so a new task appears in any in-flight range query within 60s."""
+    """Advance the user's generation so older publications become unread."""
     try:
-        client = RedisClient().client
-        # SCAN for the user-prefixed keys. Barzakh alpha cohort is small;
-        # typical user has ≤ 5 cached ranges (different windows /pulse,
-        # /table, /insights might be requesting). SCAN is non-blocking
-        # so safe even if the prefix matches more.
-        pattern = f"{_CACHE_KEY_PREFIX}{user_id}:*"
-        for key in client.scan_iter(match=pattern, count=100):
-            client.delete(key)
-    except Exception as e:
+        RedisClient().client.incr(_epoch_key(user_id))
+    except Exception as exc:
         logger.warning(
             "tasks_range_cache: invalidate_user_ranges failed for user %s: %s",
-            user_id, e,
+            user_id,
+            exc,
         )

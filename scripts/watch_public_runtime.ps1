@@ -1,11 +1,18 @@
 param(
     [switch]$NoRepair,
+    [switch]$ReadOnly,
+    [switch]$SkipRelay,
     [switch]$AllowFullBuild,
     [int]$TimeoutSeconds = 20,
     [string]$LogDir = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($ReadOnly) {
+    $NoRepair = $true
+    $SkipRelay = $true
+}
 
 function Write-Step([string]$Message) {
     Write-Host ""
@@ -56,6 +63,16 @@ function Start-OpenClawOperatorRelay([string]$RepoRoot) {
     if ($LASTEXITCODE -ne 0) {
         throw "OpenClaw operator relay start failed."
     }
+}
+
+function Ensure-OpenClawOperatorRelay([string]$RepoRoot, [bool]$Skip) {
+    if ($Skip) {
+        Write-Step "Skipping OpenClaw operator relay"
+        Write-Host "Relay start skipped by -ReadOnly/-SkipRelay; no runtime process state changed."
+        return
+    }
+
+    Start-OpenClawOperatorRelay $RepoRoot
 }
 
 function Test-StaticAssetGraph([string]$Name, [string]$BaseUri, [int]$Timeout) {
@@ -110,7 +127,7 @@ Start-Transcript -Path $transcriptPath -Append | Out-Null
 
 try {
     Set-Location $repoRoot
-    Write-Host "Barzakh public runtime watchdog"
+    Write-Host "LyraOS public runtime watchdog"
     Write-Host "Started: $(Get-Date -Format o)"
     Write-Host "Repo: $repoRoot"
     Write-Host "Log: $transcriptPath"
@@ -143,7 +160,7 @@ try {
         Write-CheckResult $publicAssets
         if ($publicAssets.Ok) {
             Write-Host "Static assets referenced by public HTML: $($publicAssets.AssetCount)"
-            Start-OpenClawOperatorRelay $repoRoot
+            Ensure-OpenClawOperatorRelay $repoRoot ([bool]$SkipRelay)
             Write-Host "Runtime is clean."
             exit 0
         }
@@ -210,7 +227,7 @@ try {
     }
     Write-Host "Static assets referenced by public HTML: $($publicAssetsAfter.AssetCount)"
 
-    Start-OpenClawOperatorRelay $repoRoot
+    Ensure-OpenClawOperatorRelay $repoRoot ([bool]$SkipRelay)
 
     Write-Host "Runtime repaired and clean."
     exit 0

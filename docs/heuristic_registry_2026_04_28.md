@@ -31,10 +31,12 @@ This is a living doc. Each heuristic gets one entry. Status values: `ACTIVE` (sh
   - `heuristic_startswith` — 0.8 <= score < 1.0
   - `heuristic_substring` — 0.6 <= score < 0.8
   - `heuristic_alias` — RESERVED (future user-defined alias table; not populated yet)
+  - `heuristic_confirmed` — user accepted a deterministic suggestion; the
+    candidate payload retains the scorer-specific source
 
 **Override priority list (operator-locked):**
 ```
-manual_user > heuristic_exact_title > llm_auto_confirmed >
+manual_user > heuristic_exact_title > heuristic_confirmed >
 user_corrected > heuristic_startswith > heuristic_substring >
 parser_auto > null
 ```
@@ -59,22 +61,26 @@ WHERE deadline_match_source LIKE 'heuristic_%'
 **Owner:** operator + this assistant runtime. Threshold tuning (the four constants in `deadline_heuristic.py`) requires operator approval before code change — they are protocol-frozen alongside the source enum extension.
 
 **Sunset condition:**
-- If heuristic disagreement rate (LLM alt rate) exceeds 25% of heuristic-bound tasks within a rolling 50-task window per user, the heuristic over-binds and one of: (a) raise BRITTLE_FLOOR to 0.6, (b) raise AUTO_BIND_MIN_SCORE to 0.7, (c) require LLM confirmation before any heuristic auto-bind (heuristic populates `llm_inferred_*` only).
-- If heuristic auto-bind rate is <5% of all task creations after 1 week of alpha use, the heuristic isn't earning its complexity. Retire and rely on LLM-only path.
+- If explicit correction/dismissal exceeds 25% of suggested bindings within a rolling 50-task window per user, tighten the brittle floor or minimum score after review.
+- If suggestion acceptance is <5% of task creations after a representative alpha window, retire the heuristic rather than replace it with an unvalidated model path.
 
-**Pre-registration footnote:** Rule 14 stratification (MANIFESTO §13) lists `deadline_match_source ∈ {'user_explicit', 'parser_auto', 'user_corrected'}`. The four new heuristic_* values + the existing `'llm_auto_confirmed'` extend the enumeration. This is permissible per Rule 14 footnote (additive enumeration is not a kill-threshold change). Documented in 2026-04-28 commit + `docs/manifesto_alignment_audit_2026_04_28.md` item #2 pattern.
+**Pre-registration footnote:** Rule 14 stratification (MANIFESTO §13) lists
+`deadline_match_source ∈ {'user_explicit', 'parser_auto', 'user_corrected'}`.
+The deterministic `heuristic_*` values extend that enumeration. Historical
+`llm_auto_confirmed` rows remain lineage only. This additive provenance value
+does not alter a scoring threshold.
 
 ---
 
-## H2 — Trust-not-rewrite contract for async LLM enrichment
+## H2 — Retired trust-not-rewrite model enrichment
 
-**Status:** ACTIVE — shipped 2026-04-28 alongside H1.
+**Status:** RETIRED 2026-07-11. Historical rows remain lineage only.
 
-**Trigger:** `llm_enrichment` background worker completing on a task that already has a canonical binding (any `deadline_match_source` other than `null` or `'parser_auto'`).
+**Former trigger:** `llm_enrichment` completed on a task that already had a canonical binding.
 
-**Intended outcome:** Never silently overwrite `task.deadline_id` when the user has already seen it bound. If LLM finds a stronger alternative, store it as a soft "Possible better match" suggestion the user can accept or dismiss explicitly.
+**Carried invariant:** Never silently overwrite `task.deadline_id`. Current deterministic suggestions require explicit user confirmation.
 
-**Mechanism:** `services/llm_parser.py:enrich_task_via_llm()` (P0 stress-test guards section). When `existing_canonical=True` AND LLM top candidate disagrees AND LLM confidence >= 0.85, write `task.llm_alternative_suggestion = {deadline_id, title, confidence, from_source}`. Frontend chip renders "Possible better match — [Switch] [Keep current]" when the field is non-null.
+**Former mechanism:** Removed direct NIM/Ollama parser and scheduler. Historical `llm_alternative_suggestion` values are retained for export/delete compatibility and do not authorize current UI.
 
 **Metric:**
 ```sql
@@ -128,7 +134,7 @@ WHERE u.onboarding_completed_at IS NULL
 | ID | Heuristic | Status |
 |---|---|---|
 | H4 | Silence heuristics — chip suppression when user rejected ≥2 chips in last hour, active focus streak >25min, >5 surfaces fired today | PROVISIONAL (Phase 1 follow-up) |
-| H5 | Ops fallback — queue depth + Ollama latency-driven fallback to regex-only | PROVISIONAL (Phase 1 follow-up) |
+| H5 | Ops fallback — queue depth + Ollama latency-driven fallback to regex-only | RETIRED with direct provider runtime 2026-07-11 |
 | H6 | Behavioral predictor heuristics — cascade detection, morning-anchor protection | PROVISIONAL (Phase 2) |
 | H7 | Trust-recovery cooldown — after wrong prediction, raise confidence threshold for similar surfaces for N hours | PROVISIONAL (Phase 2) |
 | H8 | Momentum reinforcement — "2 focused sessions today" / "you recover quickly" copy | PROVISIONAL (Phase 3, gated on funnel data) |

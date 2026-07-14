@@ -7,9 +7,6 @@ from app.utils.time_utils import now_utc
 
 
 class _FakeRedis:
-    def queue_notion_sync(self, *_args, **_kwargs):
-        return None
-
     def cache_undo_action(self, *_args, **_kwargs):
         return None
 
@@ -17,18 +14,9 @@ class _FakeRedis:
         return None
 
 
-class _FakeNotion:
-    def sync_task(self, *_args, **_kwargs):
-        return None
-
-    def archive_page(self, *_args, **_kwargs):
-        return None
-
-
 def _manager(db):
     manager = TaskManager(db)
     manager.redis = _FakeRedis()
-    manager.notion = _FakeNotion()
     return manager
 
 

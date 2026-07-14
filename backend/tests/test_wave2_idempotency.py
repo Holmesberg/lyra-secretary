@@ -216,6 +216,84 @@ def test_stop_retry_with_same_key_replays_without_second_transition(client):
         db.close()
 
 
+@needs_redis
+def test_first_early_stop_call_requires_confirmation_without_closing_session(client):
+    task_id = _create_task(client, title="Wave 2B early stop gate")
+    started = client.post(
+        "/v1/stopwatch/start",
+        json={"task_id": task_id, "pre_task_readiness": 3},
+        headers=_headers(),
+    )
+    assert started.status_code == 200, started.text
+
+    first = client.post(
+        "/v1/stopwatch/stop",
+        json={},
+        headers=_headers(),
+    )
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["requires_confirmation"] is True
+    assert body["is_early_stop"] is True
+    assert body["task_id"] == ""
+    assert body["session_id"] == ""
+
+    db = TestingSession()
+    try:
+        task = db.query(Task).filter(Task.task_id == task_id).first()
+        session = (
+            db.query(StopwatchSession)
+            .filter(StopwatchSession.task_id == task_id)
+            .one()
+        )
+        assert task.state == TaskState.EXECUTING
+        assert session.end_time_utc is None
+    finally:
+        db.close()
+
+
+@needs_redis
+def test_confirmed_zero_duration_stop_returns_skipped_without_500(client):
+    task_id = _create_task(client, title="Wave 2B zero duration stop")
+    started = client.post(
+        "/v1/stopwatch/start",
+        json={"task_id": task_id, "pre_task_readiness": 3},
+        headers=_headers(),
+    )
+    assert started.status_code == 200, started.text
+
+    stopped = client.post(
+        "/v1/stopwatch/stop",
+        params={"confirmed": "true"},
+        json={},
+        headers=_headers(),
+    )
+    assert stopped.status_code == 200, stopped.text
+    body = stopped.json()
+    assert body["task_id"] == task_id
+    assert body["skipped"] is True
+    assert body["skip_reason"] == "zero_duration"
+
+    from app.utils.redis_client import RedisClient
+
+    assert RedisClient().get_active_stopwatch(str(USER_ID)) is None
+
+    db = TestingSession()
+    try:
+        task = db.query(Task).filter(Task.task_id == task_id).first()
+        assert task.state == TaskState.SKIPPED
+        assert task.executed_duration_minutes in (None, 0)
+        session = (
+            db.query(StopwatchSession)
+            .filter(StopwatchSession.task_id == task_id)
+            .first()
+        )
+        assert session is not None
+        assert session.end_time_utc is not None
+    finally:
+        db.close()
+
+
 def _seed_overdue(task_id: str, *, executed: bool = False, initiation_status: str = "not_started"):
     start = now_utc() - timedelta(hours=2)
     end = start + timedelta(minutes=45)

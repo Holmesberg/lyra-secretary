@@ -30,13 +30,18 @@ import time
 from sqlalchemy.exc import OperationalError
 
 from app.db.session import SessionLocal, engine
-from app.db.models import PausePredictionLog, Task, TaskState, User
+from app.db.models import PausePredictionLog, StopwatchSession, Task, TaskState, User
 from app.db.scoping import set_current_user_id
 from app.services.notification_queue import enqueue_user_notification
 from app.services.operator_notifier import notify_operator
 from app.services.output_surfaces import (
     create_output_surface_decision,
     emit_surface_suppression,
+)
+from app.services.prediction_burden import (
+    acquire_prediction_spacing_window,
+    is_within_prediction_quiet_hours,
+    prediction_family_dismissed_for_session,
 )
 from app.services.pause_predictor import PausePredictor
 from app.utils.redis_client import RedisClient
@@ -163,6 +168,18 @@ def _load_active_user_ids() -> list[int]:
 def _run_for_one_user(db, user: User):
     now = now_utc()
 
+    try:
+        if is_within_prediction_quiet_hours(now, user.timezone):
+            return
+    except ValueError as exc:
+        logger.warning(
+            "pause_prediction: invalid timezone for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
+        return
+
     # Cooldown: skip if we already fired recently for this user.
     recent = (
         db.query(PausePredictionLog)
@@ -185,6 +202,53 @@ def _run_for_one_user(db, user: User):
     # pause), so every such firing was a guaranteed VT-17 miss and noise
     # in the user's UI. Killing it cleans both UX and measurement.
     if active_task is None:
+        return
+
+    active_session = _resolve_active_session(db, user, active_task)
+    if active_session is None:
+        return
+
+    try:
+        if prediction_family_dismissed_for_session(
+            db,
+            user_id=user.user_id,
+            family="pause_prediction",
+            session_id=active_session.session_id,
+        ):
+            return
+    except Exception as exc:  # noqa: BLE001 - burden gates fail closed
+        db.rollback()
+        logger.warning(
+            "pause_prediction: dismissal gate failed for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
+        return
+
+    already_fired_for_session = (
+        db.query(PausePredictionLog.firing_id)
+        .filter(
+            PausePredictionLog.user_id == user.user_id,
+            PausePredictionLog.active_task_id == active_task.task_id,
+            PausePredictionLog.fired_at >= active_session.start_time_utc,
+        )
+        .first()
+    )
+    if already_fired_for_session is not None:
+        return
+
+    try:
+        if not acquire_prediction_spacing_window(db, user.user_id, now):
+            return
+    except Exception as exc:  # noqa: BLE001 - burden gates fail closed
+        db.rollback()
+        logger.warning(
+            "pause_prediction: spacing gate failed for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
         return
 
     try:
@@ -213,7 +277,7 @@ def _run_for_one_user(db, user: User):
         confidence=prediction.confidence,
         lead_minutes=prediction.lead_minutes,
         sample_size=prediction.sample_size,
-        active_task_id=prediction.active_task_id,
+        active_task_id=prediction.active_task_id or active_task.task_id,
     )
     db.add(row)
     try:
@@ -236,7 +300,7 @@ def _run_for_one_user(db, user: User):
     # Queue a structured payload for the current user's notification poller.
     # Operator Telegram fanout is gated below; non-operator behavioral events
     # must not leak into the shared operator bot.
-    _enqueue_notification(db, user, row)
+    _enqueue_notification(db, user, row, active_session.session_id)
     _deliver_operator_alert(user, row)
 
 
@@ -278,7 +342,28 @@ def _resolve_active_task(db, user: User):
     )
 
 
-def _enqueue_notification(db, user: User, row: PausePredictionLog) -> None:
+def _resolve_active_session(db, user: User, task: Task):
+    """Return the canonical open session required for live pause delivery."""
+    return (
+        db.query(StopwatchSession)
+        .filter(
+            StopwatchSession.user_id == user.user_id,
+            StopwatchSession.task_id == task.task_id,
+            StopwatchSession.end_time_utc.is_(None),
+            StopwatchSession.auto_closed.is_(False),
+            StopwatchSession.data_quality_flag.is_(None),
+        )
+        .order_by(StopwatchSession.start_time_utc.desc())
+        .first()
+    )
+
+
+def _enqueue_notification(
+    db,
+    user: User,
+    row: PausePredictionLog,
+    session_id: str,
+) -> None:
     """Push a pause_prediction notification onto the per-user Redis queue.
 
     Non-fatal: if the push endpoint is unreachable we log and continue —
@@ -293,6 +378,7 @@ def _enqueue_notification(db, user: User, row: PausePredictionLog) -> None:
         "lead_minutes": row.lead_minutes,
         "confidence": row.confidence,
         "active_task_id": row.active_task_id,
+        "session_id": session_id,
     }
     content_snapshot = json.dumps(payload, sort_keys=True)
     try:

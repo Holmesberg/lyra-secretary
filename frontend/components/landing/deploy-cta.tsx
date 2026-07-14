@@ -28,8 +28,8 @@ export function DeployCta() {
               className="absolute -inset-6 -z-10 rounded-full bg-signal/30 blur-2xl motion-safe:animate-pulse-glow"
             />
             <Image
-              src="/barzakh-logo.png"
-              alt="Barzakh"
+              src="/lyraos-logo.png"
+              alt="LyraOS"
               width={120}
               height={120}
               quality={100}
@@ -50,7 +50,7 @@ export function DeployCta() {
         </h2>
 
         <p className="mx-auto mt-7 max-w-md text-base leading-relaxed text-dust md:text-[17px]">
-          Pre-alpha. Free. Google sign-in, optional integrations, and account
+          Pre-alpha trusted access. Google sign-in, optional integrations, and account
           export or deletion from Settings.
         </p>
 
@@ -73,7 +73,7 @@ export function DeployCta() {
         </div>
 
         <p className="mt-8 font-mono text-[10px] uppercase tracking-widest text-dust-deep">
-          :: no credit card / no waitlist / signup starts the trace
+          :: no credit card / access terms may change / signup starts the trace
         </p>
       </div>
     </section>

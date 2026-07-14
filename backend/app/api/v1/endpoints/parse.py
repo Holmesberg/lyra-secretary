@@ -6,12 +6,17 @@ from sqlalchemy.orm import Session
 import logging
 
 from app.api.deps import get_db
+from app.core.authority import authority_for_surface
 from app.db.models import Deadline
 from app.db.scoping import get_current_user_id
 from app.schemas.task import TaskParseRequest, TaskParseResponse
 from app.services.deadline_heuristic import score_deadlines
-from app.services.output_surfaces import emit_surface_render
+from app.services.output_surfaces import (
+    create_output_surface_decision,
+    get_output_surface_spec,
+)
 from app.services.parser import TaskParser
+from app.utils.time_utils import now_utc
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -47,7 +52,7 @@ class DeadlinePreviewResponse(BaseModel):
     clean_profile: Optional[str] = None
     fallback_mode: Optional[str] = None
     exposure_id: Optional[str] = None
-    render_id: Optional[str] = None
+    render_snapshot: Optional[dict] = None
 
 
 @router.post("/parse", response_model=ParseChainResponse)
@@ -117,24 +122,31 @@ def deadline_preview(
     if not match.auto_bind or not match.candidates:
         return DeadlinePreviewResponse()
     top = match.candidates[0]
+    surface_id = "task.deadline_binding_suggestion"
+    spec = get_output_surface_spec(surface_id)
+    authority = authority_for_surface(spec).as_dict()
+    render_snapshot = {
+        "copy": (
+            f"LyraOS thinks this binds to {top.title} - "
+            f"{round(top.score * 100)}% match"
+        ),
+        "deadline_id": top.deadline_id,
+        "deadline_title": top.title,
+        "deadline_match_confidence": round(top.score, 3),
+        "deadline_match_source": top.source,
+    }
     try:
-        emitted = emit_surface_render(
+        delivered_at = now_utc()
+        decision = create_output_surface_decision(
             db,
-            surface_id="task.deadline_binding_suggestion",
+            surface_id=surface_id,
             user_id=uid,
-            content_snapshot={
-                "copy": (
-                    f"Barzakh thinks this binds to {top.title} - "
-                    f"{round(top.score * 100)}% match"
-                ),
-                "deadline_id": top.deadline_id,
-                "deadline_title": top.title,
-                "deadline_match_confidence": round(top.score, 3),
-                "deadline_match_source": top.source,
-            },
+            decision_status="delivered",
+            eligible_at=delivered_at,
             content_template_id="deadline_binding_suggestion",
             initiative="system",
             trigger_source="parse.deadline_preview",
+            delivered_at=delivered_at,
         )
         db.commit()
     except Exception:
@@ -150,11 +162,11 @@ def deadline_preview(
         deadline_title=top.title,
         deadline_match_confidence=round(top.score, 3),
         deadline_match_source=top.source,
-        surface_id=emitted["surface_id"],
-        truth_class=emitted["truth_class"],
-        signal_targets=emitted["signal_targets"],
-        clean_profile=emitted["clean_profile"],
-        fallback_mode=emitted["fallback_mode"],
-        exposure_id=emitted["exposure_id"],
-        render_id=emitted["render_id"],
+        surface_id=surface_id,
+        truth_class=spec.truth_class,
+        signal_targets=list(spec.signal_targets),
+        clean_profile=spec.clean_profile,
+        fallback_mode=spec.fallback_mode,
+        exposure_id=decision.exposure_id,
+        render_snapshot={**render_snapshot, **authority},
     )

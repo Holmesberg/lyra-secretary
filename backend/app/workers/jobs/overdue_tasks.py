@@ -36,9 +36,8 @@ def _run_for_one_user(db, user: User):
             task = manager.skip_task(
                 task.task_id,
                 reason="auto-abandoned: task window passed without timer start",
+                initiation_status="abandoned",
             )
-            task.initiation_status = "abandoned"
-            db.commit()
             count += 1
         except Exception as e:
             logger.error(f"Failed to abandon task {task.task_id} (user {user.user_id}): {e}", exc_info=True)

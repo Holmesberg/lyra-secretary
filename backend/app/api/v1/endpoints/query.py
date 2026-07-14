@@ -11,7 +11,10 @@ from app.db.models import Task, TaskExecutionCorrection, TaskState, StopwatchSes
 from app.db.scoping import get_current_user_id
 from app.utils.time_utils import to_utc, to_local
 from app.utils.redis_client import RedisClient
-from app.utils.tasks_range_cache import get_cached_range, set_cached_range
+from app.utils.tasks_range_cache import (
+    get_cached_range_with_epoch,
+    set_cached_range_if_epoch,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -46,12 +49,12 @@ def query_tasks(
     3. Neither set → no date filter (all tasks matching other filters).
     """
     try:
+        range_cache_context = None
         # Cache fast-path for range queries (date_from set). The /pulse
         # v2 dashboard fires a 14-day range every page load to power
         # the Recovery + System Insight charts; this is the single
-        # heaviest query on first paint. 60s TTL is invisible to the
-        # chart aggregations (they resample at day-boundaries client-
-        # side) and busts on TaskManager.create_task. See
+        # heaviest query on first paint. Mutations advance a user-scoped
+        # generation so an overlapping miss cannot republish stale data. See
         # `app/utils/tasks_range_cache.py` for the full rationale.
         # Only cache the canonical "state=all + no extra filters" shape
         # /pulse uses — otherwise we'd thrash the cache on every variant.
@@ -67,9 +70,14 @@ def query_tasks(
             uid = get_current_user_id()
             if uid is not None:
                 effective_to = date_to or datetime.utcnow().strftime("%Y-%m-%d")
-                cached = get_cached_range(uid, date_from, effective_to)
+                cached, cache_epoch = get_cached_range_with_epoch(
+                    uid,
+                    date_from,
+                    effective_to,
+                )
                 if cached is not None:
                     return cached
+                range_cache_context = (uid, effective_to, cache_epoch)
 
         query = db.query(Task)
 
@@ -271,7 +279,6 @@ def query_tasks(
                 "pause_count": agg.get("pause_count", 0),
                 "task_completion_percentage": agg.get("task_completion_percentage"),
                 "voided_reason": t.voided_reason,
-                "notion_page_id": t.notion_page_id,
                 # Loop 11 deadline binding fields (alembic 033).
                 "deadline_id": t.deadline_id,
                 "deadline_match_source": t.deadline_match_source,
@@ -283,8 +290,8 @@ def query_tasks(
                     deadline_titles.get(t.deadline_id)
                     if t.deadline_id else None
                 ),
-                # Workstream 1 LLM enrichment (alembic 036, 2026-04-28).
-                # Without these, the LlmEnrichmentChip cannot render.
+                # Deterministic suggestions currently reuse historical
+                # enrichment columns until a schema migration is approved.
                 "llm_parse_status": t.llm_parse_status,
                 "llm_inferred_deadline_id": t.llm_inferred_deadline_id,
                 "llm_deadline_match_confidence": t.llm_deadline_match_confidence,
@@ -295,9 +302,7 @@ def query_tasks(
                     if t.llm_binding_rejected_at else None
                 ),
                 # Trust-not-rewrite contract (alembic 039, 2026-04-28).
-                # Set by llm_enrichment when the LLM disagrees with an
-                # existing user/heuristic binding. Chip renders
-                # "Possible better match" when present.
+                # Historical model suggestion retained for export/audit.
                 "llm_alternative_suggestion": t.llm_alternative_suggestion,
             })
 
@@ -306,13 +311,16 @@ def query_tasks(
             "total": total_count,
             "truncated": truncated,
         }
-        # Cache the canonical-shape range response (computed lazily so
-        # the cache miss path stays simple). Bust on TaskManager.create_task.
-        if cache_eligible:
-            uid = get_current_user_id()
-            if uid is not None:
-                effective_to = date_to or datetime.utcnow().strftime("%Y-%m-%d")
-                set_cached_range(uid, date_from, effective_to, response_payload)
+        # Publish only into the generation captured before the database read.
+        if cache_eligible and range_cache_context is not None:
+            uid, effective_to, cache_epoch = range_cache_context
+            set_cached_range_if_epoch(
+                uid,
+                date_from,
+                effective_to,
+                response_payload,
+                cache_epoch,
+            )
         return response_payload
 
     except Exception as e:

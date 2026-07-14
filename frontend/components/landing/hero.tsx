@@ -21,7 +21,7 @@ export function Hero() {
               className="absolute inset-0 -z-10 rounded-full bg-signal/20 blur-2xl"
             />
             <Image
-              src="/barzakh-logo.png"
+              src="/lyraos-logo.png"
               alt=""
               width={140}
               height={140}
@@ -32,7 +32,7 @@ export function Hero() {
             />
           </div>
           <span className="font-display text-[1.75rem] font-medium leading-none tracking-tight text-parchment">
-            Barzakh
+            LyraOS
           </span>
         </div>
 
@@ -70,7 +70,7 @@ export function Hero() {
             </h1>
 
             <p className="mt-6 max-w-xl text-base leading-relaxed text-dust sm:mt-7 md:text-[17px]">
-              Barzakh helps you plan tasks, run timers, recover missed plans,
+              LyraOS helps you plan tasks, run timers, recover missed plans,
               and see how execution actually behaves. Under the surface it
               preserves provenance, clean-data boundaries, and exposure state
               so every insight stays bounded.
@@ -145,7 +145,7 @@ export function Hero() {
                   <span className="font-mono text-[9px] uppercase tracking-widest text-dust sm:text-[10px]">
                     <span className="sm:hidden">insights // live</span>
                     <span className="hidden sm:inline">
-                      Barzakh // insights // bounded-synthesis
+                      LyraOS // insights // bounded-synthesis
                     </span>
                   </span>
                   <span className="font-mono text-[10px] text-signal motion-safe:animate-pulse-glow">
@@ -155,7 +155,7 @@ export function Hero() {
                 <div className="scan-lines">
                   <Image
                     src="/insights-v2.png"
-                    alt="Barzakh insights dashboard with a primary synthesis card and supporting confidence-ranked behavioral evidence."
+                    alt="LyraOS insights dashboard with a primary synthesis card and supporting confidence-ranked behavioral evidence."
                     width={875}
                     height={780}
                     priority

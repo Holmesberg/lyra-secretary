@@ -5,7 +5,9 @@
 *Current status: historical design note. The current shipped architecture is
 NextAuth Google identity, frontend-minted backend JWT, FastAPI v1 API, request
 user scope middleware, SQLAlchemy/Postgres, Redis, APScheduler workers, and
-operator-only JARVIS/OpenClaw. Use `docs/deployment_architecture.md`,
+operator-only diagnostics plus the operator-alert relay. Active JARVIS
+runtime routes are removed; historical JARVIS audit rows remain exportable until
+an approved schema cleanup. Use `docs/deployment_architecture.md`,
 `docs/cortex_product_research_contract_v0.md`, `README.md`, and `MANIFESTO.md`
 as current authority. `archive/appstore/summary_of_app.md` is historical
 lineage unless a current governance document explicitly promotes a section.*
@@ -27,7 +29,8 @@ Convert Lyra Secretary from single-tenant to multi-user: every row owned by exac
 - No self-serve signup until migration is verified. Operator stays "user 1."
 - No changes to state machine, analytics, or bias_factor model. Those become per-user-correct for free once user_id exists.
 - No changes to the Apr 4-15 experimental data. All fields must survive with full fidelity.
-- No Notion sync changes in this migration (per-user Notion is a follow-up).
+- No external-provider sync changes in this migration. Historical Notion sync
+  text in this design note is not current runtime authority.
 
 ### Constraints
 
@@ -77,14 +80,14 @@ Convert Lyra Secretary from single-tenant to multi-user: every row owned by exac
 |---|---|---|---|
 | Cross-user data leak via forgotten scope | Medium | Critical | `before_compile` hook + isolation test suite |
 | Operator data corrupted by migration | Low | Critical | Phase 0 backup + row count verification |
-| Notion sync writes wrong user's task | Low | High | Per-user Notion config; operator-only initially |
+| Provider import writes wrong user's task | Low | High | Provider imports must route through canonical provider/deadline authority and remain scoped per user |
 | Background jobs hammer DB at scale | Low | Low | Out of scope until N > 1000 |
 | Auth token leak | Medium | Medium | 180-day tokens, revocation endpoint |
 | Apr 15 data subtly altered | Medium | Critical | Migration runs AFTER Apr 15 only |
 
 ### What stays the same
 
-State machine, conflict detector, stopwatch/pause/resume, analytics formulas, category taxonomy, Notion sync format, frontend payload shapes, Apr 4-15 data.
+State machine, conflict detector, stopwatch/pause/resume, analytics formulas, category taxonomy, frontend payload shapes, Apr 4-15 data, and parked legacy provider fields.
 
 ### Deferred decisions
 
@@ -162,17 +165,17 @@ All three are independent of Phase 4 analytics features and can be a Sprint 0 in
 
 ---
 
-## 3. Docker Networking (OpenClaw Bridge)
+## 3. Docker Networking (Operator Relay Bridge)
 
 > Current freeze interpretation: this section documents historical network
-> reachability only. It does not authorize OpenClaw-to-product wiring, runtime
-> identity bypass, Jarvis/OpenClaw expansion, AI synthesis, or direct backend
-> mutation from OpenClaw. Current OpenClaw authority lives in
-> `docs/openclaw_orchestration_contract_v0.md` plus the active authority docs.
+> reachability only. It does not authorize reasoning-adapter-to-product wiring,
+> runtime identity bypass, JARVIS/adapter expansion, AI synthesis, or direct
+> backend mutation from the relay. Current adapter authority is relay-only and
+> subordinate to the active authority docs.
 
-Lyra Secretary and OpenClaw run as separate Docker Compose stacks with separate networks. The OpenClaw gateway needs to reach `http://backend:8000`.
+Lyra Secretary and the operator relay run as separate Docker Compose stacks with separate networks. The relay gateway needs to reach `http://backend:8000`.
 
-**Solution:** Add Lyra's network as external in OpenClaw's docker-compose.yml:
+**Solution:** Add Lyra's network as external in the relay docker-compose.yml:
 
 ```yaml
 services:
@@ -191,4 +194,6 @@ The gateway container has a foot in both networks, resolving `backend` via Docke
 
 **Verify:** `docker exec openclaw-openclaw-gateway-1 curl -s http://backend:8000/v1/health`
 
-The `--allow-unconfigured` flag in OpenClaw allows `exec` calls to arbitrary commands including `curl` to the Lyra backend. See OpenClaw documentation for configuration.
+The relay gateway's `--allow-unconfigured` flag allows `exec` calls to
+arbitrary commands including `curl` to the Lyra backend. See the relay runtime
+documentation for configuration.

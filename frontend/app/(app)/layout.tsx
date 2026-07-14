@@ -193,7 +193,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="mt-4 text-[11px] text-dust-deep">
               Check that the backend is running{" "}
               {typeof window !== "undefined" && window.location.hostname.endsWith("lyraos.org")
-                ? "for the public Barzakh API"
+                ? "for the public LyraOS API"
                 : `at ${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}`} and
               reload.
             </div>

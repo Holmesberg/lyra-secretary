@@ -7,17 +7,18 @@ import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   queryTasks,
   getStopwatchStatus,
-  startStopwatch,
-  stopStopwatch,
   markAbandoned,
   markDone,
   deleteTask,
   voidTask,
   type TaskRow as TaskRowType,
-  type StopResponse,
   type StopwatchStatus,
 } from "@/lib/tasks";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
+import {
+  useTodayStopwatchCommands,
+  type TodayEarlyStopState,
+} from "@/lib/hooks/use-today-stopwatch-commands";
 import { TaskRow } from "@/components/task-row";
 import { ActiveTimerBanner } from "@/components/active-timer-banner";
 import { ReadinessModal } from "@/components/readiness-modal";
@@ -42,9 +43,16 @@ import {
 import { ackExposureRender } from "@/lib/api";
 import { announceUndoAvailable } from "@/lib/undo";
 import {
+  invalidateDeadlineMutationCaches,
   invalidateTodayTaskCommandSurfaces,
   queryKeys,
 } from "@/lib/query-keys";
+import {
+  buildTodayDueDeadlines,
+  buildTodayFeed,
+  localDateKey,
+  parseDateKey,
+} from "@/lib/today-feed";
 import type { PauseReason } from "@/lib/stopwatch-pause-reasons";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,18 +68,10 @@ interface ToastEntry {
   id: string;
   message: string;
   viewId: string | null;
+  exposureId?: string | null;
+  surfaceId?: string | null;
   lifespan: "auto" | "pin";
   detailHref?: string;
-}
-
-function localDateKey(d: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function parseDate(s: string): Date {
-  const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d);
 }
 
 function InterruptionStartDialog({
@@ -122,9 +122,9 @@ function TodayInner() {
   // Viewed date: from URL ?date= or default to today
   const dateParam = searchParams.get("date");
   const viewedDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : today;
-  const viewedDateObj = parseDate(viewedDate);
+  const viewedDateObj = parseDateKey(viewedDate);
   const isToday = viewedDate === today;
-  const isPast = viewedDateObj < parseDate(today) && !isToday;
+  const isPast = viewedDateObj < parseDateKey(today) && !isToday;
 
   function navigateTo(dateStr: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -266,14 +266,11 @@ function TodayInner() {
   const [interruptionStartFor, setInterruptionStartFor] = useState<TaskRowType | null>(null);
   const [readinessInterruptionType, setReadinessInterruptionType] = useState<string | null>(null);
   const [reflectionOpen, setReflectionOpen] = useState(false);
-  const [earlyStop, setEarlyStop] = useState<{
-    elapsed: number;
-    planned: number;
-    message: string;
-  } | null>(null);
+  const [earlyStop, setEarlyStop] = useState<TodayEarlyStopState | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<TaskRowType | null>(null);
+  const handledEditTaskRef = useRef<string | null>(null);
   const [correctionTask, setCorrectionTask] = useState<TaskRowType | null>(null);
   const [bindingTask, setBindingTask] = useState<TaskRowType | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -289,6 +286,40 @@ function TodayInner() {
   // applies this reason directly — one-tap pause from the prediction
   // banner's primary action (2026-04-22). Clears on handled.
   const [quickPauseReason, setQuickPauseReason] = useState<PauseReason | undefined>(undefined);
+
+  useEffect(() => {
+    const requestedTaskId = searchParams.get("edit_task");
+    if (!requestedTaskId) {
+      handledEditTaskRef.current = null;
+      return;
+    }
+    if (tasksQ.isPending || handledEditTaskRef.current === requestedTaskId) {
+      return;
+    }
+
+    handledEditTaskRef.current = requestedTaskId;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("edit_task");
+    const query = params.toString();
+    router.replace(query ? `/today?${query}` : "/today");
+
+    const task = (tasksQ.data ?? []).find(
+      (candidate) => candidate.task_id === requestedTaskId
+    );
+    if (
+      !task ||
+      task.voided_at ||
+      task.state === "EXECUTED" ||
+      task.state === "DELETED"
+    ) {
+      setInfoMsg("That task is no longer available to reschedule.");
+      return;
+    }
+
+    setInfoMsg(null);
+    setEditingTask(task);
+  }, [router, searchParams, tasksQ.data, tasksQ.isPending]);
+
   const clearRequestPause = useCallback(() => {
     setRequestPause(false);
     setQuickPauseReason(undefined);
@@ -308,17 +339,33 @@ function TodayInner() {
     viewId: string | null,
     lifespan: "auto" | "pin",
     detailHref?: string,
+    exposureId?: string | null,
+    surfaceId?: string | null,
   ) => {
     const id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setToasts((prev) => [...prev, { id, message, viewId, lifespan, detailHref }]);
+    setToasts((prev) => [
+      ...prev,
+      { id, message, viewId, exposureId, surfaceId, lifespan, detailHref },
+    ]);
   }, []);
 
-  const refresh = () => {
-    void invalidateTodayTaskCommandSurfaces(qc, viewedDate, nextDateStr);
-  };
+  const refresh = () =>
+    invalidateTodayTaskCommandSurfaces(qc);
+
+  const { handleStart, handleStop } = useTodayStopwatchCommands({
+    tasksDayKey,
+    refresh,
+    setErrorMsg,
+    setReadinessFor,
+    setReadinessInterruptionType,
+    setReflectionOpen,
+    setEarlyStop,
+    setInfoMsg,
+    pushToast,
+  });
 
   const status = statusQ.data;
   const activeTaskId = status?.active ? status.task_id : undefined;
@@ -361,29 +408,10 @@ function TodayInner() {
     setReadinessInterruptionType(null);
   }
 
-  function sortKey(t: TaskRowType): number {
-    const parse = (s: string | null) => (s ? new Date(s).getTime() : null);
-    const pStart = parse(t.start);
-    const eStart = parse(t.executed_start);
-    const eEnd = parse(t.executed_end);
-    switch (t.state) {
-      case "EXECUTED":
-        return eEnd ?? eStart ?? pStart ?? 0;
-      case "SKIPPED":
-        return eEnd ?? pStart ?? 0;
-      case "EXECUTING":
-      case "PAUSED":
-        return eStart ?? pStart ?? 0;
-      case "PLANNED":
-      default:
-        return pStart ?? 0;
-    }
-  }
-
-  // Unified /today feed — Barzakh tasks + external GCal events interleaved
-  // by time while preserving Barzakh's existing two-bucket rhythm:
-  //   top  — PLANNED Barzakh tasks + FUTURE/ongoing GCal events, asc by start
-  //   bottom — non-PLANNED Barzakh tasks + PAST GCal events, desc by end
+  // Unified /today feed — LyraOS tasks + external GCal events interleaved
+  // by time while preserving LyraOS's existing two-bucket rhythm:
+  //   top  — PLANNED LyraOS tasks + FUTURE/ongoing GCal events, asc by start
+  //   bottom — non-PLANNED LyraOS tasks + PAST GCal events, desc by end
   //
   // Past-end GCal events sit alongside EXECUTED/SKIPPED so the operator
   // finds attendance controls where they expect "what-happened" items
@@ -393,11 +421,6 @@ function TodayInner() {
   // The sort produces a union-typed list the renderer branches on
   // (TaskRow vs ExternalEventRow) — keeps the two row types visually
   // distinct without duplicating the feed.
-  type FeedItem =
-    | { kind: "task"; task: TaskRowType }
-    | { kind: "external"; event: ExternalCalendarEvent }
-    | { kind: "deadline"; deadline: DeadlineResponse; overdue: boolean };
-
   const nowMs = now.getTime();
   const gcalEventsAll: ExternalCalendarEvent[] = calEventsQ.data?.events ?? [];
 
@@ -407,51 +430,19 @@ function TodayInner() {
   // Voided deadlines are always excluded; state-based exclusion is left
   // to the badge rendering (so completed deadlines on a past day still
   // show with a "COMPLETED" pill for historical reference).
-  const isViewingToday = viewedDate === today;
-  const dueDeadlines = ((): { deadline: DeadlineResponse; overdue: boolean }[] => {
-    const all = deadlinesQ.data?.deadlines ?? [];
-    return all.flatMap((d) => {
-      if (d.voided_at) return [];
-      const due = new Date(d.due_at_utc);
-      const dueLocalKey = format(due, "yyyy-MM-dd");
-      // OVERDUE definition unifies two paths:
-      //   (a) post-sweep: sweep_missed_deadlines transitioned the row to
-      //       state='missed' (every 1h job in workers/scheduler.py).
-      //   (b) pre-sweep: state still 'planned'/'active' but due_at has
-      //       passed — the sweep just hasn't run yet (up to ~1h window).
-      // Both paths render the loud OVERDUE pill + pin to /today until
-      // the user explicitly handles them. Operator-flagged 2026-04-29:
-      // missed imported deadlines are high-signal recovery candidates
-      // data point and must be impossible to miss in the UI.
-      const isOverdue =
-        d.state === "missed" ||
-        ((d.state === "planned" || d.state === "active") &&
-          due.getTime() < nowMs);
-      // Show on the deadline's actual due day (any past/future day the
-      // operator views). The OVERDUE pill only fires on today-view —
-      // browsing a past day where a deadline missed should show the
-      // historical "MISSED" state, not the action-prompt "OVERDUE"
-      // (which implies "act now" — false on a past-day view).
-      if (dueLocalKey === viewedDate) {
-        return [{ deadline: d, overdue: isViewingToday && isOverdue }];
-      }
-      // Pin overdue items to today so they stay visible until resolved.
-      // Covers both the pre-sweep (planned/active+past) and post-sweep
-      // (missed) cases — without this, a deadline that misses by >1h
-      // (when sweep flips it to missed) silently disappears from /today.
-      if (isViewingToday && isOverdue) {
-        return [{ deadline: d, overdue: true }];
-      }
-      return [];
-    });
-  })();
+  const dueDeadlines = buildTodayDueDeadlines({
+    deadlines: deadlinesQ.data?.deadlines,
+    viewedDate,
+    today,
+    nowMs,
+  });
 
   // Overdue aggregate for the top banner. Only surfaces on /today (don't
   // pollute past/future-day views with action prompts about today). LMS
   // breakout shows the connected-source sub-count when imported rows
   // are present, without implying one fixed obligation source.
   // call 2026-04-29 evening.
-  const overdueDeadlines = isViewingToday
+  const overdueDeadlines = isToday
     ? dueDeadlines.filter((x) => x.overdue)
     : [];
   const overdueCount = overdueDeadlines.length;
@@ -459,240 +450,12 @@ function TodayInner() {
     (x) => x.deadline.external_source?.startsWith("moodle")
   ).length;
 
-  const feed = ((): { top: FeedItem[]; bottom: FeedItem[] } => {
-    if (!tasksQ.data) return { top: [], bottom: [] };
-    const visible = tasksQ.data.filter((t) => !t.voided_at);
-    const plannedTasks = visible.filter((t) => t.state === "PLANNED");
-    const restTasks = visible.filter((t) => t.state !== "PLANNED");
-    const gcalFuture = gcalEventsAll.filter(
-      (e) => new Date(e.end).getTime() > nowMs
-    );
-    const gcalPast = gcalEventsAll.filter(
-      (e) => new Date(e.end).getTime() <= nowMs
-    );
-
-    const topItems: FeedItem[] = [
-      ...plannedTasks.map(
-        (t): FeedItem => ({ kind: "task", task: t })
-      ),
-      ...gcalFuture.map(
-        (e): FeedItem => ({ kind: "external", event: e })
-      ),
-      // Deadlines always live in the top bucket — they are pending-action
-      // items even when overdue, never "what already happened."
-      ...dueDeadlines.map(
-        (x): FeedItem => ({ kind: "deadline", deadline: x.deadline, overdue: x.overdue })
-      ),
-    ].sort((a, b) => {
-      const at =
-        a.kind === "task"
-          ? sortKey(a.task)
-          : a.kind === "external"
-            ? new Date(a.event.start).getTime()
-            : new Date(a.deadline.due_at_utc).getTime();
-      const bt =
-        b.kind === "task"
-          ? sortKey(b.task)
-          : b.kind === "external"
-            ? new Date(b.event.start).getTime()
-            : new Date(b.deadline.due_at_utc).getTime();
-      return at - bt;
-    });
-
-    const bottomItems: FeedItem[] = [
-      ...restTasks.map((t): FeedItem => ({ kind: "task", task: t })),
-      ...gcalPast.map(
-        (e): FeedItem => ({ kind: "external", event: e })
-      ),
-    ].sort((a, b) => {
-      const at =
-        a.kind === "task"
-          ? sortKey(a.task)
-          : a.kind === "external"
-            ? new Date(a.event.end).getTime()
-            : new Date(a.deadline.due_at_utc).getTime();
-      const bt =
-        b.kind === "task"
-          ? sortKey(b.task)
-          : b.kind === "external"
-            ? new Date(b.event.end).getTime()
-            : new Date(b.deadline.due_at_utc).getTime();
-      return bt - at;
-    });
-
-    return { top: topItems, bottom: bottomItems };
-  })();
-
-  async function handleStart(
-    task: TaskRowType,
-    readiness: number,
-    interruptionType?: string | null
-  ) {
-    setErrorMsg(null);
-    // Optimistic flip — the API call is ~1.5s over the Supabase pooler,
-    // so close the readiness modal and flip status immediately. Snapshot
-    // for rollback if the server rejects (e.g., task already EXECUTING
-    // in another tab). Mirrors the cancelQueries pattern in
-    // active-timer-banner.tsx §applyPause.
-    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
-    const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
-    const interruptedTaskId =
-      interruptionType && snapshot?.active ? snapshot.task_id : undefined;
-    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, {
-      active: true,
-      task_id: task.task_id,
-      task_title: task.title,
-      paused: false,
-      start_time: new Date().toISOString(),
-      elapsed_minutes: 0,
-      planned_duration_minutes: task.planned_duration_minutes ?? 0,
-      total_paused_minutes: 0,
-    });
-    // Optimistic task-state flip — the task card flips from "PLANNED" to
-    // "EXECUTING" immediately instead of waiting 1.4 s for refresh().
-    qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
-      old?.map((t) => {
-        if (t.task_id === task.task_id) return { ...t, state: "EXECUTING" };
-        if (interruptedTaskId && t.task_id === interruptedTaskId) {
-          return { ...t, state: "PAUSED" };
-        }
-        return t;
-      })
-    );
-    setReadinessFor(null);
-    setReadinessInterruptionType(null);
-    try {
-      const startResp = await startStopwatch(
-        task.task_id,
-        readiness,
-        interruptionType
-      );
-      announceUndoAvailable("Timer started.");
-      // LYR-097 (2026-04-28): surface "started early" hint when backend
-      // flags the task as future. Inline 4s toast — non-blocking,
-      // visible-once acknowledgment so the user knows the session
-      // timestamp diverges from the calendar slot.
-      if (startResp.is_future_task && startResp.planned_start) {
-        try {
-          const planned = new Date(startResp.planned_start);
-          const minutesEarly = Math.max(
-            0,
-            Math.round((planned.getTime() - Date.now()) / 60000)
-          );
-          const timeLabel = planned.toLocaleTimeString([], {
-            hour: "numeric", minute: "2-digit",
-          });
-          setErrorMsg(
-            `Heads up — this was scheduled for ${timeLabel}, you started ${minutesEarly} min early. The session will record from now.`
-          );
-          // Auto-clear so it doesn't hover indefinitely
-          setTimeout(() => setErrorMsg((prev) =>
-            prev?.startsWith("Heads up — this was scheduled") ? null : prev
-          ), 5000);
-        } catch {
-          // Defensive — bad date string shouldn't break the start flow
-        }
-      }
-      refresh();
-    } catch (e: any) {
-      if (snapshot !== undefined) {
-        qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
-      }
-      qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
-        old?.map((t) => {
-          if (t.task_id === task.task_id) return { ...t, state: "PLANNED" };
-          if (interruptedTaskId && t.task_id === interruptedTaskId) {
-            return { ...t, state: "EXECUTING" };
-          }
-          return t;
-        })
-      );
-      setErrorMsg(e?.message ?? "Failed to start timer");
-    }
-  }
-
-  async function handleStop(
-    reflection: number,
-    opts: { confirmed?: boolean; completionPct?: number; scopeOutcome?: string } = {}
-  ) {
-    setErrorMsg(null);
-    // Optimistic flip — same cancelQueries pattern as handleStart. Clears
-    // the active banner + unlocks Start buttons on sibling tasks instantly.
-    // If the backend responds with requires_confirmation (early-stop gate),
-    // we roll back so the banner stays visible for the confirmation modal.
-    await qc.cancelQueries({ queryKey: queryKeys.stopwatchStatus });
-    const snapshot = qc.getQueryData<StopwatchStatus>(queryKeys.stopwatchStatus);
-    const stoppedTaskId = snapshot?.task_id;
-    qc.setQueryData<StopwatchStatus>(queryKeys.stopwatchStatus, { active: false });
-    if (stoppedTaskId) {
-      qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
-        old?.map((t) =>
-          t.task_id === stoppedTaskId ? { ...t, state: "EXECUTED" } : t
-        )
-      );
-    }
-    try {
-      const res: StopResponse = await stopStopwatch(reflection, {
-        confirmed: opts.confirmed,
-        task_completion_percentage: opts.completionPct,
-        scope_outcome: opts.scopeOutcome,
-      });
-      if (res.requires_confirmation) {
-        if (snapshot !== undefined) {
-          qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
-        }
-        if (stoppedTaskId) {
-          qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
-            old?.map((t) =>
-              t.task_id === stoppedTaskId ? { ...t, state: "EXECUTING" } : t
-            )
-          );
-        }
-        setEarlyStop({
-          elapsed: res.duration_minutes,
-          planned: res.planned_duration_minutes,
-          message: res.confirmation_message ?? "Early stop",
-        });
-        return;
-      }
-      setReflectionOpen(false);
-      setEarlyStop(null);
-      if (res.paused_parent) {
-        setInfoMsg(
-          `${res.paused_parent.title} is still paused (${res.paused_parent.paused_minutes} min). Resume when ready.`
-        );
-      }
-      // LYR-098: surface retention signals as toasts per
-      // notification_patterns.md §Toast. micro_mirror auto-dismisses
-      // in 8s; calibration_nudge is pinned until dismissed since the
-      // reference-class summary needs dwell time to read.
-      // LYR-110: both toasts now carry a "View details →" link to /insights.
-      // micro_mirror had 95% dismissal at ~6s dwell across all users —
-      // adding a deeper-engagement affordance tests whether absence-of-
-      // affordance was the failure vs content-not-valuable.
-      if (res.micro_mirror) {
-        pushToast(res.micro_mirror, res.micro_mirror_view_id ?? null, "auto", "/insights");
-        void ackExposureRender(res.micro_mirror_exposure_id);
-      }
-      if (res.calibration_nudge) {
-        pushToast(res.calibration_nudge, res.calibration_nudge_view_id ?? null, "pin", "/insights");
-        void ackExposureRender(res.calibration_nudge_exposure_id);
-      }
-      refresh();
-    } catch (e: any) {
-      if (snapshot !== undefined) {
-        qc.setQueryData(queryKeys.stopwatchStatus, snapshot);
-      }
-      if (stoppedTaskId) {
-        qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
-          old?.map((t) =>
-            t.task_id === stoppedTaskId ? { ...t, state: "EXECUTING" } : t
-          )
-        );
-      }
-      setErrorMsg(e?.message ?? "Failed to stop timer");
-    }
-  }
+  const feed = buildTodayFeed({
+    tasks: tasksQ.data,
+    events: gcalEventsAll,
+    dueDeadlines,
+    nowMs,
+  });
 
   function handleInterruptionCreated(taskId: string, taskTitle: string) {
     refresh();
@@ -727,7 +490,6 @@ function TodayInner() {
       pause_count: 0,
       task_completion_percentage: null,
       voided_reason: null,
-      notion_page_id: null,
       description: null,
       deadline_id: null,
       deadline_match_source: null,
@@ -814,14 +576,20 @@ function TodayInner() {
   async function handleDelete(task: TaskRowType) {
     if (!window.confirm("Delete this task? Cancelled plans are recorded as a behavioral signal.")) return;
     setErrorMsg(null);
+    await qc.cancelQueries({ queryKey: tasksDayKey });
+    const snapshot = qc.getQueryData<TaskRowType[]>(tasksDayKey);
     qc.setQueryData<TaskRowType[]>(tasksDayKey, (old) =>
       old?.filter((t) => t.task_id !== task.task_id)
     );
     try {
       await deleteTask(task.task_id);
       announceUndoAvailable("Task deleted.");
-      refresh();
+      await refresh();
     } catch (e: any) {
+      if (snapshot !== undefined) {
+        qc.setQueryData(tasksDayKey, snapshot);
+      }
+      await refresh();
       setErrorMsg(e?.message ?? "Failed to delete task");
     }
   }
@@ -862,17 +630,30 @@ function TodayInner() {
     clearSelection();
     setVoidModalOpen(false);
 
-    try {
-      await Promise.all(ids.map((id) => voidTask(id, reason, detail)));
-      qc.invalidateQueries({ queryKey: tasksDayKey });
-      qc.invalidateQueries({ queryKey: queryKeys.stopwatchStatus });
-    } catch (e) {
-      // Rollback the optimistic mutation; surface error.
+    const results = await Promise.allSettled(
+      ids.map((id) => voidTask(id, reason, detail))
+    );
+    const failures = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+
+    if (failures.length > 0) {
+      // Each void command commits independently. Restore first, then refetch
+      // canonical truth so successful siblings stay voided while failed rows
+      // remain visible.
       if (snapshot !== undefined) {
         qc.setQueryData(tasksDayKey, snapshot);
       }
+    }
+
+    await refresh();
+
+    if (failures.length > 0) {
+      const firstFailure = failures[0].reason;
       setErrorMsg(
-        `Void failed: ${e instanceof Error ? e.message : String(e)}`
+        `${failures.length} of ${ids.length} tasks could not be voided: ${
+          firstFailure instanceof Error ? firstFailure.message : String(firstFailure)
+        }`
       );
     }
   }
@@ -941,6 +722,7 @@ function TodayInner() {
           requestPause={requestPause}
           quickPauseReason={quickPauseReason}
           onRequestPauseHandled={clearRequestPause}
+          onStop={() => setReflectionOpen(true)}
         />
       )}
 
@@ -1102,9 +884,9 @@ function TodayInner() {
                 deadline={item.deadline}
                 overdue={item.overdue}
                 onEdit={(d) => setEditingDeadline(d)}
-                onChanged={() =>
-                  qc.invalidateQueries({ queryKey: queryKeys.deadlines })
-                }
+                onChanged={() => {
+                  void invalidateDeadlineMutationCaches(qc);
+                }}
               />
             )
           )}
@@ -1168,8 +950,7 @@ function TodayInner() {
         open={!!bindingTask}
         onClose={() => setBindingTask(null)}
         onSaved={() => {
-          qc.invalidateQueries({ queryKey: queryKeys.deadlines });
-          refresh();
+          void invalidateDeadlineMutationCaches(qc);
         }}
       />
 
@@ -1186,7 +967,7 @@ function TodayInner() {
         deadline={editingDeadline}
         onClose={() => setEditingDeadline(null)}
         onSaved={() => {
-          qc.invalidateQueries({ queryKey: queryKeys.deadlines });
+          void invalidateDeadlineMutationCaches(qc);
           setEditingDeadline(null);
         }}
       />
@@ -1201,6 +982,8 @@ function TodayInner() {
             id={t.id}
             message={t.message}
             viewId={t.viewId}
+            exposureId={t.exposureId}
+            surfaceId={t.surfaceId}
             lifespan={t.lifespan}
             detailHref={t.detailHref}
             onDismiss={removeToast}

@@ -53,9 +53,7 @@ MARKERS: dict[str, re.Pattern[str]] = {
 }
 
 WORKER_JOB_ALLOWED_MARKERS: dict[str, set[str]] = {
-    "backend/app/workers/jobs/llm_enrichment.py": {"db_commit"},
     "backend/app/workers/jobs/moodle_submissions_sync.py": {"db_commit"},
-    "backend/app/workers/jobs/notion_sync.py": {"db_commit"},
     "backend/app/workers/jobs/orphan_task_recovery.py": {"db_commit"},
     "backend/app/workers/jobs/overdue_tasks.py": {"db_commit"},
     "backend/app/workers/jobs/pause_prediction.py": {"db_commit"},

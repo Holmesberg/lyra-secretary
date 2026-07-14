@@ -14,6 +14,9 @@ from app.db.models import (
 )
 from app.db.scoping import get_current_user_id, set_current_user_id
 from app.services.exposure_ledger import record_decision, record_render, record_suppression
+from app.services.operator_notification_snapshot import (
+    pending_notification_duplicate_identity,
+)
 from app.api.v1.endpoints import operator as operator_endpoint
 from tests.conftest import auth_headers
 
@@ -22,6 +25,18 @@ def _clear_ids(db, ids: list[int]) -> None:
     original_uid = get_current_user_id()
     set_current_user_id(None)
     try:
+        fixture_ids = {
+            int(row[0])
+            for row in (
+                db.query(User.user_id)
+                .filter(User.email.like("user-%@cohort.example.com"))
+                .all()
+            )
+        }
+        ids = sorted(set(ids) | fixture_ids)
+        if not ids:
+            db.commit()
+            return
         exposure_ids = [
             row[0]
             for row in (
@@ -241,6 +256,7 @@ def test_operator_dashboard_marks_uninstrumented_metrics(client, db):
 
     assert body["activity_frequency"]["login_frequency_status"] == "not_instrumented"
     assert body["notification_lifecycle"]["web_rendered"] == 0
+    assert body["notification_lifecycle"]["web_superseded"] == 0
     assert "web_rendered" not in body["notification_lifecycle"]["not_instrumented_fields"]
     assert "login_only" in body["meaningful_activity_definition"]["excluded_events"]
     assert "task_created" in body["meaningful_activity_definition"]["included_events"]
@@ -477,6 +493,50 @@ class _DashboardRedisClient:
         self.client = _DashboardRedis(rows_by_key)
 
 
+def test_pending_notification_duplicate_identity_prefers_stable_targets():
+    assert pending_notification_duplicate_identity(
+        {"type": "reminder", "dedupe_key": "deadline:abc"}
+    ) == ("reminder", "dedupe", "deadline:abc", "", "")
+
+    assert pending_notification_duplicate_identity(
+        {
+            "type": "timer_overflow",
+            "task_id": "task-1",
+            "session_id": "session-1",
+            "firing_id": "fire-1",
+        }
+    ) == ("timer_overflow", "target", "task-1", "session-1", "fire-1")
+
+    legacy_one = pending_notification_duplicate_identity(
+        {
+            "notification_id": "r-1",
+            "exposure_id": "exp-1",
+            "type": "reminder",
+            "message": "Task A starts soon",
+        }
+    )
+    legacy_same_content = pending_notification_duplicate_identity(
+        {
+            "notification_id": "r-2",
+            "exposure_id": "exp-2",
+            "type": "reminder",
+            "message": "Task A starts soon",
+        }
+    )
+    legacy_different_content = pending_notification_duplicate_identity(
+        {
+            "notification_id": "r-3",
+            "exposure_id": "exp-3",
+            "type": "reminder",
+            "message": "Task B starts soon",
+        }
+    )
+
+    assert legacy_one[1] == "legacy_content"
+    assert legacy_one == legacy_same_content
+    assert legacy_one != legacy_different_content
+
+
 def test_operator_dashboard_reminder_duplicates_do_not_fail_k02(client, db, monkeypatch):
     ids = list(range(9101, 9150))
     _clear_ids(db, ids)
@@ -635,11 +695,108 @@ def test_operator_dashboard_exposure_contamination_is_task_window_scoped(client,
     assert "operator_user_sessions" in body["measurement_integrity"]["clean_trace_ratio_basis"]["excluded_from_denominator"]
 
 
+def test_operator_dashboard_unknown_exposure_stays_dirty_denominator(client, db):
+    ids = list(range(9101, 9180))
+    _clear_ids(db, ids)
+    db.add(_user(9161, operator=True))
+    db.add(_user(9162, operator=False))
+
+    task = _task(9162, "unknown-exposure-task", state=TaskState.EXECUTED)
+    task.created_at = datetime.utcnow() - timedelta(hours=3)
+    task.planned_start_utc = task.created_at
+    task.planned_end_utc = task.planned_start_utc + timedelta(minutes=60)
+    task.executed_start_utc = task.planned_start_utc
+    task.executed_end_utc = task.planned_start_utc + timedelta(minutes=45)
+    task.executed_duration_minutes = 45
+    db.add(task)
+    db.add(
+        StopwatchSession(
+            session_id="unknown-exposure-session",
+            task_id="unknown-exposure-task",
+            user_id=9162,
+            start_time_utc=task.executed_start_utc,
+            end_time_utc=task.executed_end_utc,
+            total_paused_minutes=0.0,
+            auto_closed=False,
+        )
+    )
+    db.flush()
+
+    record_decision(
+        db,
+        user_id=9162,
+        eligible_at=task.executed_start_utc - timedelta(minutes=5),
+        delivered_at=task.executed_start_utc - timedelta(minutes=5),
+        decision_status="shown",
+        exposure_category="behavioral_insight",
+        content_template_id="analytics_insights",
+        initiative="system",
+        trigger_source="test",
+    )
+    db.commit()
+
+    res = client.get("/v1/operator/dashboard", headers=auth_headers(9161))
+    assert res.status_code == 200
+    body = res.json()
+    basis = body["measurement_integrity"]["clean_trace_ratio_basis"]
+    assert basis["denominator"] == 1
+    assert basis["numerator"] == 0
+    assert body["measurement_integrity"]["clean_trace_ratio"] == 0.0
+    assert body["measurement_integrity"]["dirty_trace_count"] == 1
+    assert body["measurement_integrity"]["dirty_reasons"]["unknown_exposure"] == 1
+    assert body["measurement_integrity"]["dirty_reason_distribution"]["unknown_exposure"] == 1
+    assert body["measurement_integrity"]["dirty_reasons"]["exposure_contaminated"] == 0
+    assert body["notification_lifecycle"]["exposure_without_render_count"] >= 1
+
+
 def test_operator_dashboard_read_is_side_effect_free(client, db):
     ids = list(range(9101, 9150))
     _clear_ids(db, ids)
     db.add(_user(9141, operator=True))
     db.add(_user(9142, operator=False))
+    now = datetime.utcnow()
+    task = _task(9142, "operator-readonly-task", state=TaskState.EXECUTED)
+    task.executed_start_utc = now - timedelta(hours=2)
+    task.executed_end_utc = now - timedelta(hours=1)
+    task.executed_duration_minutes = 60
+    db.add(task)
+    db.add(
+        StopwatchSession(
+            session_id="operator-readonly-session",
+            task_id=task.task_id,
+            user_id=9142,
+            start_time_utc=task.executed_start_utc,
+            end_time_utc=task.executed_end_utc,
+            total_paused_minutes=0.0,
+            auto_closed=False,
+        )
+    )
+    deadline = Deadline(
+        deadline_id="operator-readonly-provider-deadline",
+        user_id=9142,
+        title="Operator readonly provider deadline",
+        due_at_utc=now + timedelta(days=1),
+        state="active",
+        external_source="moodle_ws",
+        external_id="operator-readonly-provider-deadline",
+        imported_at=now,
+    )
+    db.add(deadline)
+    db.add(
+        DeadlineCompletionEvent(
+            event_id="operator-readonly-provider-completion",
+            deadline_id=deadline.deadline_id,
+            user_id=9142,
+            task_id=None,
+            completion_source="moodle_submission",
+            completed_at_utc=now,
+            recorded_at_utc=now,
+            due_at_utc_at_event=deadline.due_at_utc,
+            completed_after_due=False,
+            delay_minutes=0,
+            time_provenance="external_import",
+        )
+    )
     event = NotificationLifecycleEvent(
         event_id="operator-readonly-lifecycle",
         user_id=9142,
@@ -647,14 +804,19 @@ def test_operator_dashboard_read_is_side_effect_free(client, db):
         channel="web",
         notification_type="timer_overflow",
         status="queued",
-        queued_at=datetime.utcnow(),
-        last_transition_at=datetime.utcnow(),
-        created_at=datetime.utcnow(),
+        queued_at=now,
+        last_transition_at=now,
+        created_at=now,
     )
     db.add(event)
     db.commit()
 
     before = {
+        "users": db.query(User).count(),
+        "tasks": db.query(Task).count(),
+        "sessions": db.query(StopwatchSession).count(),
+        "deadlines": db.query(Deadline).count(),
+        "deadline_completion_events": db.query(DeadlineCompletionEvent).count(),
         "notifications": db.query(NotificationLifecycleEvent).count(),
         "decisions": db.query(ExposureDecisionEvent).count(),
         "renders": db.query(ExposureRenderEvent).count(),
@@ -671,6 +833,11 @@ def test_operator_dashboard_read_is_side_effect_free(client, db):
     issue_ids = {issue["id"] for issue in body["dynamic_issues"]}
     assert "notification_source_freshness_not_instrumented" not in issue_ids
     after = {
+        "users": db.query(User).count(),
+        "tasks": db.query(Task).count(),
+        "sessions": db.query(StopwatchSession).count(),
+        "deadlines": db.query(Deadline).count(),
+        "deadline_completion_events": db.query(DeadlineCompletionEvent).count(),
         "notifications": db.query(NotificationLifecycleEvent).count(),
         "decisions": db.query(ExposureDecisionEvent).count(),
         "renders": db.query(ExposureRenderEvent).count(),

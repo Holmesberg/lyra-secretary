@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const PUBLIC_SITE_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL || "https://barzakh.app";
+const PUBLIC_SITE_ORIGIN = process.env.NEXT_PUBLIC_SITE_URL || "https://lyraos.org";
 
 /**
  * Marketing surfaces (/, /privacy, /terms) are fair game for crawlers.
@@ -13,7 +13,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/privacy", "/terms", "/llms.txt", "/barzakh.md"],
+        allow: ["/", "/privacy", "/terms", "/llms.txt", "/lyraos.md"],
         disallow: [
           "/today",
           "/calendar",

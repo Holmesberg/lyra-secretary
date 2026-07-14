@@ -50,7 +50,20 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { queryKeys } from "@/lib/query-keys";
+import {
+  invalidateDeadlineMutationCaches,
+  invalidateTaskMutationCaches,
+  queryKeys,
+} from "@/lib/query-keys";
+import {
+  CALENDAR_TIMEZONE,
+  calendarIdForState,
+  calendarRangeToQueryRange,
+  deadlineToZdt,
+  initialCalendarQueryRange,
+  toZdt,
+  type CalendarQueryRange,
+} from "@/lib/calendar-event-builders";
 
 // TIMEZONE CONTRACT (Apr 11 2026, single-timezone alpha):
 // Backend sends and accepts naked Cairo-local ISO strings
@@ -64,7 +77,7 @@ import { queryKeys } from "@/lib/query-keys";
 // wire — backend and frontend must stay symmetric. The refactor is one
 // commit that changes API serializer + frontend parser + user.timezone
 // field together, not a piecemeal edit to this file.
-const TIMEZONE = "Africa/Cairo";
+const TIMEZONE = CALENDAR_TIMEZONE;
 
 // Five state-colored calendars — mapped to the brand palette so calendar
 // blocks and /today's state badges carry the same visual vocabulary:
@@ -122,7 +135,7 @@ const STATE_CALENDARS: Record<string, CalendarType> = {
     },
   },
   // Google Calendar read-only import (Path B, 2026-04-21). Rendered
-  // as muted grey background blocks — distinct from every Barzakh state
+  // as muted grey background blocks — distinct from every LyraOS state
   // so the user can't confuse "my tracked plan" with "my external
   // commitment." Events carry disableDND + disableResize via
   // _options so Schedule-X doesn't offer interaction handles.
@@ -131,7 +144,7 @@ const STATE_CALENDARS: Record<string, CalendarType> = {
     label: "Google Calendar",
     darkColors: {
       main: "#6B7280", // muted grey (same ramp as EXECUTED)
-      container: "#111827", // darker void, sinks behind Barzakh blocks
+      container: "#111827", // darker void, sinks behind LyraOS blocks
       onContainer: "#9CA3AF", // dust-mid — readable but not attention-grabbing
     },
   },
@@ -152,43 +165,8 @@ const STATE_CALENDARS: Record<string, CalendarType> = {
   },
 };
 
-function calendarIdForState(state: TaskRowType["state"]): string {
-  switch (state) {
-    case "EXECUTING":
-      return "executing";
-    case "PAUSED":
-      return "paused";
-    case "EXECUTED":
-      return "executed";
-    case "SKIPPED":
-      return "skipped";
-    case "PLANNED":
-    default:
-      return "planned";
-  }
-}
-
-// Backend returns Cairo-local naive ISO per project rule ("2026-04-05T06:00:00"
-// — no Z, no offset). Parse as PlainDateTime (wall-clock, zoneless) and
-// attach the Cairo zone to produce a ZonedDateTime. Single-timezone alpha
-// — multi-timezone refactor deferred until post-retention. When that
-// ships, this function changes alongside the API serializer in the same
-// commit. See TIMEZONE CONTRACT above.
-function toZdt(iso: string): Temporal.ZonedDateTime {
-  return Temporal.PlainDateTime.from(iso).toZonedDateTime(TIMEZONE);
-}
-
-// Deadlines deliberately violate the TIMEZONE CONTRACT for tasks: the
-// DeadlineResponse schema serializes due_at_utc with an explicit UTC
-// offset ("2026-05-15T15:00:00+00:00") so the browser-local list view
-// renders correctly. Schedule-X expects a Cairo-zoned time, so convert
-// from Instant → ZonedDateTime in the user's tz here. Do NOT call
-// `toZdt(...)` on a deadline ISO; PlainDateTime.from rejects offsets
-// and throws.
-function deadlineToZdt(iso: string): Temporal.ZonedDateTime {
-  return Temporal.Instant.from(iso).toZonedDateTimeISO(TIMEZONE);
-}
-
+// Date conversion helpers live in lib/calendar-event-builders so task,
+// deadline, and Schedule-X range semantics stay shared and testable.
 function eventDateString(event: CalendarEventExternal): string | null {
   const start = event.start as unknown as {
     toPlainDate?: () => { toString: () => string };
@@ -203,7 +181,7 @@ function eventDateString(event: CalendarEventExternal): string | null {
   return null;
 }
 
-function isBarzakhTaskEvent(event: CalendarEventExternal): boolean {
+function isLyraOSTaskEvent(event: CalendarEventExternal): boolean {
   const id = String(event.id);
   return !id.startsWith("gcal-") && !id.startsWith("deadline-");
 }
@@ -233,7 +211,7 @@ function scrollElementIntoCalendarViewport(
 function scrollCalendarViewportToNow(viewport: HTMLDivElement) {
   const now = Temporal.Now.zonedDateTimeISO(TIMEZONE);
   const startHour = 6;
-  const endHour = 23;
+  const endHour = 24;
   const minutesFromStart = Math.max(
     0,
     Math.min((endHour - startHour) * 60, (now.hour - startHour) * 60 + now.minute),
@@ -245,32 +223,6 @@ function scrollCalendarViewportToNow(viewport: HTMLDivElement) {
     top: Math.max(0, targetTop),
     behavior: "auto",
   });
-}
-
-type CalendarQueryRange = {
-  from: string;
-  to: string;
-};
-
-type ScheduleRange = {
-  start: Temporal.ZonedDateTime;
-  end: Temporal.ZonedDateTime;
-};
-
-function initialCalendarQueryRange(): CalendarQueryRange {
-  const today = Temporal.Now.plainDateISO(TIMEZONE);
-  const weekStart = today.subtract({ days: today.dayOfWeek - 1 });
-  return {
-    from: weekStart.toString(),
-    to: weekStart.add({ days: 6 }).toString(),
-  };
-}
-
-function calendarRangeToQueryRange(range: ScheduleRange): CalendarQueryRange {
-  return {
-    from: range.start.toPlainDate().toString(),
-    to: range.end.toPlainDate().toString(),
-  };
 }
 
 function taskToEvent(
@@ -355,12 +307,12 @@ function taskToEvent(
 // string the backend will interpret as UTC, shifting every drag by the
 // Cairo offset.
 function zdtToIso(zdt: Temporal.ZonedDateTime | Temporal.PlainDate): string {
-  // Barzakh events are always timed; PlainDate only appears for all-day
+  // LyraOS events are always timed; PlainDate only appears for all-day
   // views, which we don't use. Defensive narrow so a future all-day
   // experiment doesn't silently corrupt reschedule payloads.
   if (!(zdt instanceof Temporal.ZonedDateTime)) {
     throw new Error(
-      "zdtToIso: unexpected PlainDate — Barzakh events are always timed"
+      "zdtToIso: unexpected PlainDate — LyraOS events are always timed"
     );
   }
   return zdt.toPlainDateTime().toString();
@@ -384,12 +336,12 @@ export default function CalendarPage() {
   });
 
   // Google Calendar read-only events. Same visible range as the task query so
-  // external events render alongside Barzakh tasks across the operator's
+  // external events render alongside LyraOS tasks across the operator's
   // scrollable view. 60s staleTime matches the backend Redis TTL, so
-  // switching views feels instant but Barzakh picks up newly-added GCal
+  // switching views feels instant but LyraOS picks up newly-added GCal
   // events within ~1 minute. Connected=false (no refresh_token yet)
   // returns empty events gracefully — no error toast, UI simply shows
-  // Barzakh tasks alone.
+  // LyraOS tasks alone.
   const calendarEventsQ = useQuery({
     queryKey: queryKeys.calendarEventsWindow(visibleRange.from, visibleRange.to),
     queryFn: () =>
@@ -463,7 +415,7 @@ export default function CalendarPage() {
     const liveEnd = activeId
       ? Temporal.Now.zonedDateTimeISO(TIMEZONE)
       : null;
-    const BarzakhEvents = tasksQ.data
+    const LyraOSEvents = tasksQ.data
       .filter((t) => !t.voided_at)
       .map((t) => {
         const isActive = t.task_id === activeId;
@@ -479,8 +431,8 @@ export default function CalendarPage() {
     // calendarId="google_external" picks up the muted grey scheme
     // registered in STATE_CALENDARS; _options disables DND/resize so
     // Schedule-X treats them as immutable alongside EXECUTED/SKIPPED
-    // Barzakh tasks. id-prefixed with `gcal-` so onEventClick can
-    // distinguish external events from Barzakh task ids (Barzakh uses
+    // LyraOS tasks. id-prefixed with `gcal-` so onEventClick can
+    // distinguish external events from LyraOS task ids (LyraOS uses
     // UUIDs, external uses gcal-<google_event_id>). Hyphen — not
     // colon — because Schedule-X uses document.querySelector on the
     // event id, and `:` is a CSS pseudo-class delimiter that breaks
@@ -526,7 +478,7 @@ export default function CalendarPage() {
       } as CalendarEventExternal;
     });
 
-    return [...BarzakhEvents, ...gcalEvents, ...deadlineEvents];
+    return [...LyraOSEvents, ...gcalEvents, ...deadlineEvents];
     // dataUpdatedAt changes on every poll, guaranteeing a fresh
     // Temporal.Now on each refresh cycle. Without this dep the block
     // would only grow when the status payload shape differs — but
@@ -577,10 +529,7 @@ export default function CalendarPage() {
   // (`["tasks-range", dateFrom, dateTo]`) stay in lock-step without either
   // side knowing about the other's key shape.
   function refreshAll() {
-    qc.invalidateQueries({
-      predicate: (q) =>
-        q.queryKey[0] === "tasks" || q.queryKey[0] === "tasks-range",
-    });
+    void invalidateTaskMutationCaches(qc);
   }
 
   // Toast-style auto-dismiss for the drag/resize rejection banner —
@@ -649,14 +598,10 @@ export default function CalendarPage() {
       calendars: STATE_CALENDARS,
       isDark: true,
       timezone: TIMEZONE,
-      // Crop the visible day to 06:00–23:00 (operator-active hours).
-      // Schedule-X default is 00:00–24:00 — on mobile this means the
-      // top of the visible grid is midnight, and the operator has to
-      // scroll a long way to reach their actual tasks. Cropping shows
-      // ~17 productive hours instead of 24, which fits ~2x more of the
-      // day in viewport at the same zoom level.
-      // 2026-04-30 mobile-density fix per operator screenshot review.
-      dayBoundaries: { start: "06:00", end: "23:00" },
+      // Accepted plans are inspectable truth, including work scheduled before
+      // 06:00. The viewport below auto-scrolls to the active/first relevant
+      // event (or now), so ordinary daytime use does not begin at midnight.
+      dayBoundaries: { start: "00:00", end: "24:00" },
       // Schedule-X default (eventOverlap: true) cascades overlapping events
       // at horizontal offsets but extends each to the right edge — titles
       // obscured by neighbors. false makes them split into equal sub-columns,
@@ -751,10 +696,10 @@ export default function CalendarPage() {
   }, [calendar, events, eventsService]);
 
   // Schedule-X starts the time-grid at the top of the day-boundary window.
-  // With 06:00-23:00 cropped into a fixed-height internal scroll viewport,
+  // With 00:00-24:00 inside a fixed-height internal scroll viewport,
   // afternoon/evening work can be correctly rendered but below the fold,
   // making the calendar look empty. After events mount, land the viewport on
-  // the active task first when it is visible, then the first Barzakh task in the
+  // the active task first when it is visible, then the first LyraOS task in the
   // viewed range, then current time.
   useEffect(() => {
     if (!calendar || currentView === "month-grid") return;
@@ -770,9 +715,9 @@ export default function CalendarPage() {
       : undefined;
     const today = Temporal.Now.plainDateISO(TIMEZONE).toString();
     const firstTodayTask = events.find(
-      (event) => isBarzakhTaskEvent(event) && eventDateString(event) === today,
+      (event) => isLyraOSTaskEvent(event) && eventDateString(event) === today,
     );
-    const firstVisibleTask = events.find(isBarzakhTaskEvent);
+    const firstVisibleTask = events.find(isLyraOSTaskEvent);
     const firstVisibleEvent = events[0];
     const targetId = activeEvent
       ? String(activeEvent.id)
@@ -951,7 +896,7 @@ export default function CalendarPage() {
         deadline={editingDeadline}
         onClose={() => setEditingDeadline(null)}
         onSaved={() => {
-          qc.invalidateQueries({ queryKey: queryKeys.deadlines });
+          void invalidateDeadlineMutationCaches(qc);
           setEditingDeadline(null);
         }}
       />

@@ -19,7 +19,6 @@ from app.services.deadline_heuristic import score_deadlines
 from app.services.category_inference import infer_academic_category
 from app.services.state_machine import StateMachine
 from app.services.conflict_detector import ConflictDetector, ConflictResult
-from app.services.notion_client import NotionClient
 from app.utils.redis_client import RedisClient
 from app.utils.me_cache import invalidate_me
 from app.utils.tasks_range_cache import invalidate_user_ranges
@@ -44,6 +43,34 @@ ANCHOR_TITLE_TOKENS = {
 }
 RCT_ARM_CONTROL = "deadline_soft_warning_control"
 RCT_ARM_TREATMENT = "deadline_soft_warning_treatment"
+
+
+def _store_deadline_suggestions(task: Task, heuristic_match) -> None:
+    """Write deterministic suggestions into legacy compatibility columns."""
+    task.llm_parse_status = "retired"
+    task.llm_inferred_deadline_id = None
+    task.llm_deadline_match_confidence = None
+    task.llm_deadline_candidates = None
+    task.llm_priority = None
+    task.llm_sub_items = None
+    task.llm_parsed_at = None
+    task.llm_alternative_suggestion = None
+    if heuristic_match is None or not heuristic_match.candidates:
+        return
+    task.llm_deadline_candidates = [
+        {
+            "deadline_id": candidate.deadline_id,
+            "title": candidate.title,
+            "confidence": candidate.score,
+            "source": candidate.source,
+        }
+        for candidate in heuristic_match.candidates
+    ]
+    top_candidate = heuristic_match.candidates[0]
+    task.llm_inferred_deadline_id = top_candidate.deadline_id
+    task.llm_deadline_match_confidence = top_candidate.score
+
+
 def _require_current_user(op: str) -> int:
     """Resolve the acting user_id from the request-scoped ContextVar.
 
@@ -99,7 +126,6 @@ class TaskManager:
         self.parser = TaskParser()
         self.state_machine = StateMachine(db)
         self.conflict_detector = ConflictDetector(db)
-        self.notion = NotionClient()
         self.redis = RedisClient()
     
     def _compute_session_index(
@@ -198,7 +224,7 @@ class TaskManager:
           - voided deadline
           - terminal state (completed | missed | skipped | voided)
 
-        See `docs/deadline_mechanism_design.md §"Inference mechanism"` Pass 1.
+        See `docs/archive/legacy/provider_academic/deadline_mechanism_design.md §"Inference mechanism"` Pass 1.
         Caller (create_task) is responsible for catching ValueError and
         mapping to HTTP 400 at the API layer.
         """
@@ -250,7 +276,7 @@ class TaskManager:
         Create a new task.
 
         Returns:
-            (created_task | None, ConflictResult, notion_synced)
+            (created_task | None, ConflictResult, legacy_external_sync)
 
         Severity contract (Path A, Apr 16 2026):
           - HARD conflicts (overlap with EXECUTING) ALWAYS reject regardless
@@ -324,7 +350,7 @@ class TaskManager:
             # stay suggestion-only in llm_* fields.
             #
             # The override priority list (operator-locked) is:
-            #   manual_user > heuristic_exact_title > llm_auto_confirmed >
+            #   manual_user > heuristic_exact_title > heuristic_confirmed >
             #   user_corrected > heuristic_startswith > heuristic_substring
             #   > parser_auto > null
             uid_for_pass2 = _require_current_user("create_task_pass2")
@@ -387,38 +413,10 @@ class TaskManager:
         if bound_deadline is not None and bound_deadline.state == "planned":
             bound_deadline.state = "active"
 
-        # Pre-populate llm_deadline_candidates from the heuristic match so
-        # the chip's Tier 1/2/3 dispatch fires INSTANTLY at create time
-        # rather than waiting for async LLM enrichment (5-9s, sometimes
-        # longer cold). Operator-locked 2026-04-28: "ensure deadline
-        # aware with tiers we discussed."
-        # Skipped when:
-        #   - User passed explicit deadline_id (chip suppressed via
-        #     user_explicit source guard anyway)
-        #   - Heuristic produced no candidates (Tier 3 quiet line will
-        #     fire from the chip's expectsIntelligence check; LLM may
-        #     populate later)
-        # The async LLM worker may overwrite these fields with stronger
-        # signal — that's intentional. The candidate-list refresh is
-        # softer than canonical-deadline rewrite (covered by trust-not-
-        # rewrite contract); user sees suggestions update but their
-        # chosen binding is never silently changed.
-        if (
-            deadline_id is None
-            and heuristic_match_for_candidates is not None
-            and heuristic_match_for_candidates.candidates
-        ):
-            task.llm_deadline_candidates = [
-                {
-                    "deadline_id": c.deadline_id,
-                    "title": c.title,
-                    "confidence": c.score,
-                }
-                for c in heuristic_match_for_candidates.candidates
-            ]
-            top_candidate = heuristic_match_for_candidates.candidates[0]
-            task.llm_inferred_deadline_id = top_candidate.deadline_id
-            task.llm_deadline_match_confidence = top_candidate.score
+        # Keep deterministic deadline suggestions immediate and
+        # user-confirmed. The llm_* names are historical storage only.
+        if deadline_id is None:
+            _store_deadline_suggestions(task, heuristic_match_for_candidates)
 
         self.db.add(task)
         self.db.flush()  # Get task_id
@@ -448,7 +446,7 @@ class TaskManager:
                 user_decision=nudge_decision,
                 decided_at=created_at_ts,
             ))
-            # Phase 6 V3 commitment (`docs/phase_6_architecture_backlog.md:227`):
+            # Phase 6 V3 commitment (`docs/archive/legacy/planning/phase_6_architecture_backlog.md:227`):
             # every creation-nudge fire writes a ReflectionViewLog row alongside
             # the CalibrationNudgeEvent, so the response-type classifier has
             # signal data when Phase 6 ships. CalibrationNudgeEvent is the
@@ -531,16 +529,6 @@ class TaskManager:
                 invalidate_user_ranges(uid)
         except Exception as e:
             logger.warning("create_task: cache invalidate failed (non-blocking): %s", e)
-
-        # Notion sync deferred to Redis queue — inline call cost user 1-8s per
-        # create on the hot path. Queue drains via APScheduler worker.
-        notion_synced = False
-        try:
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Notion queue failed during create_task: {e}", exc_info=True)
-        
         # Substitution detection: link to recently DELETED task in overlapping slot
         try:
             cutoff = now_utc() - timedelta(minutes=10)
@@ -568,7 +556,7 @@ class TaskManager:
             self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=uid)
         except Exception as e:
             logger.warning("create_task: undo cache write failed (non-blocking): %s", e)
-        return task, [], notion_synced
+        return task, [], False
 
     def create_retroactive_task(
         self,
@@ -590,7 +578,7 @@ class TaskManager:
         Otherwise sets planned = executed (delta = 0).
 
         Returns:
-            (task, notion_synced)
+            (task, legacy_external_sync)
         """
         start_utc = to_utc(start_time)
         end_utc = to_utc(end_time)
@@ -677,17 +665,7 @@ class TaskManager:
                 invalidate_user_ranges(uid)
         except Exception as e:
             logger.warning("create_task: cache invalidate failed (non-blocking): %s", e)
-
-        # Sync to Notion
-        notion_synced = False
-        try:
-            self.notion.sync_task(task, db=self.db)
-            notion_synced = True
-        except Exception as e:
-            logger.error(f"Notion sync failed during create_retroactive_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
-
-        return task, notion_synced
+        return task, False
 
     def start_task(self, task_id: str) -> Task:
         """
@@ -705,14 +683,6 @@ class TaskManager:
         
         task = self.state_machine.transition(task, TaskState.EXECUTING)
         _invalidate_user_runtime_caches(task.user_id, "start_task")
-
-        # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
-        try:
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Notion queue failed during start_task: {e}", exc_info=True)
-
         return task
     
     def complete_task(
@@ -730,7 +700,7 @@ class TaskManager:
             executed_end: Actual end time (UTC)
             
         Returns:
-            (updated_task, notion_synced)
+            (updated_task, legacy_external_sync)
         """
         task = self.db.query(Task).filter(Task.task_id == task_id).first()
         if not task:
@@ -759,19 +729,11 @@ class TaskManager:
 
         task = self.state_machine.transition(task, TaskState.EXECUTED)
         _invalidate_user_runtime_caches(task.user_id, "complete_task")
-
-        # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
-        notion_synced = False
-        try:
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
-        except Exception as e:
-            logger.error(f"Notion queue failed during complete_task: {e}", exc_info=True)
-
         try:
             self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(task.user_id))
         except Exception as e:
             logger.warning("complete_task: last_task cache write failed (non-blocking): %s", e)
-        return task, notion_synced
+        return task, False
 
     def reconcile_calibration_nudge_outcome(
         self,
@@ -793,7 +755,60 @@ class TaskManager:
         if nudge_event.resolved_at is None:
             nudge_event.resolved_at = now_utc()
 
-    def skip_task(self, task_id: str, reason: Optional[str] = None) -> Task:
+    def void_task(
+        self,
+        task_id: str,
+        *,
+        voided_reason: str,
+        void_reason_detail: Optional[str] = None,
+    ) -> tuple[Task, str, Optional[str]]:
+        """Void a task and its linked calibration outcome atomically."""
+        uid = _require_current_user("void_task")
+        task = (
+            self.db.query(Task)
+            .filter(Task.task_id == task_id, Task.user_id == uid)
+            .first()
+        )
+        if task is None:
+            raise ValueError("Task not found")
+        if task.state == TaskState.DELETED:
+            raise ImmutableTaskError("Cannot void a DELETED task")
+
+        previous_state = (
+            task.state.value if hasattr(task.state, "value") else str(task.state)
+        )
+        previous_status = task.initiation_status
+        voided_at = now_utc()
+        task.voided_at = voided_at
+        task.voided_reason = voided_reason
+        task.void_reason_detail = void_reason_detail
+        if task.state == TaskState.EXECUTED:
+            task.initiation_status = "system_error"
+
+        (
+            self.db.query(CalibrationNudgeEvent)
+            .filter(
+                CalibrationNudgeEvent.user_id == uid,
+                CalibrationNudgeEvent.task_id == task_id,
+                CalibrationNudgeEvent.voided_at.is_(None),
+            )
+            .update(
+                {CalibrationNudgeEvent.voided_at: voided_at},
+                synchronize_session=False,
+            )
+        )
+        self.db.commit()
+        self.db.refresh(task)
+        _invalidate_user_runtime_caches(task.user_id, "void_task")
+        return task, previous_state, previous_status
+
+    def skip_task(
+        self,
+        task_id: str,
+        reason: Optional[str] = None,
+        *,
+        initiation_status: Optional[str] = None,
+    ) -> Task:
         """
         Mark task as skipped.
         
@@ -810,16 +825,10 @@ class TaskManager:
         if task.voided_at is not None:
             raise ValueError("Cannot skip a voided task")
 
+        if initiation_status is not None:
+            task.initiation_status = initiation_status
         task = self.state_machine.transition(task, TaskState.SKIPPED, notes=reason)
         _invalidate_user_runtime_caches(task.user_id, "skip_task")
-
-        # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
-        try:
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Notion queue failed during skip_task: {e}", exc_info=True)
-
         return task
 
     def mark_overdue_task_done_retroactively(self, task_id: str) -> Task:
@@ -827,7 +836,7 @@ class TaskManager:
         Mark an overdue PLANNED/SKIPPED task as done without reopening it.
 
         This is an explicit retrospective reconciliation path for the product
-        affordance "I did this, but Barzakh auto-skipped or left it overdue." It
+        affordance "I did this, but LyraOS auto-skipped or left it overdue." It
         intentionally bypasses the normal stopwatch state-machine path because
         no measured execution trace exists. To protect research metrics, the
         row is stamped initiation_status='retroactive' so Cortex
@@ -910,16 +919,6 @@ class TaskManager:
                 invalidate_user_ranges(uid)
         except Exception as e:
             logger.warning("mark_done: cache invalidate failed (non-blocking): %s", e)
-
-        try:
-            self.redis.queue_notion_sync(
-                task.task_id,
-                {"action": "sync"},
-                user_id=str(task.user_id),
-            )
-        except Exception as e:
-            logger.error("Notion queue failed during mark_done: %s", e, exc_info=True)
-
         try:
             self.redis.set_last_task(
                 task.task_id,
@@ -1099,17 +1098,7 @@ class TaskManager:
         
         task = self.state_machine.transition(task, TaskState.DELETED)
         _invalidate_user_runtime_caches(task.user_id, "delete_task")
-        
-        # Sync delete state to Notion (archive the page)
-        try:
-            if task.notion_page_id:
-                self.notion.archive_page(task.notion_page_id)
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Notion archive failed during delete_task: {e}", exc_info=True)
-            self.redis.queue_notion_sync(task.task_id, {"action": "archive"}, user_id=str(task.user_id))
-        
-        # Cache for undo — best-effort, Redis may be unavailable in some environments
+# Cache for undo — best-effort, Redis may be unavailable in some environments
         try:
             state_value = task.state.value if hasattr(task.state, 'value') else str(task.state)
             self.redis.cache_undo_action("delete_task", task.task_id, {
@@ -1181,17 +1170,6 @@ class TaskManager:
         self.db.refresh(planned)
         for uid in {skipped.user_id, planned.user_id}:
             _invalidate_user_runtime_caches(uid, "swap_tasks")
-
-        for t in (skipped, planned):
-            try:
-                self.notion.sync_task(t, db=self.db)
-            except Exception as e:
-                logger.error(f"Notion sync failed on swap for {t.task_id}: {e}", exc_info=True)
-                try:
-                    self.redis.queue_notion_sync(t.task_id, {"action": "sync"}, user_id=str(t.user_id))
-                except Exception as queue_err:
-                    logger.warning("swap: notion redis-queue fallback also failed (non-blocking): %s", queue_err)
-
         return skipped, planned
 
     def reschedule_task(
@@ -1213,9 +1191,7 @@ class TaskManager:
             new_start: New start time (UTC)
             new_end: New end time (UTC), or None to preserve duration
             title, category: optional field updates (None = no change)
-            description: optional new description (None = no change). When
-                changed, resets llm_parse_status='pending' so the enrichment
-                worker re-runs against the new text.
+            description: optional new description (None = no change).
             deadline_id: optional new explicit deadline binding. Validates
                 ownership + bindable state; sets deadline_match_source =
                 'user_explicit', confidence = 1.0. None = no change.
@@ -1261,29 +1237,36 @@ class TaskManager:
         task.planned_start_utc = new_start
         task.planned_end_utc = new_end
         task.planned_duration_minutes = int((new_end - new_start).total_seconds() / 60)
-        if title is not None:
+        content_changed = False
+        if title is not None and title != task.title:
             task.title = title
+            content_changed = True
         if category is not None:
             task.category = category
-        # Description edit-mode parity (2026-04-28): when description
-        # changes, reset LLM enrichment so the worker re-runs against
-        # the new text. Stale candidates from prior content shouldn't
-        # linger. We keep llm_binding_rejected_at sticky — if user
-        # rejected once, the re-enrichment audits the data without
-        # re-popping the chip.
-        # Normalize both sides before comparing so whitespace-only
-        # diffs don't trigger unnecessary re-enrichment churn.
+        # Refresh deterministic deadline suggestions when text changes. Keep
+        # the historical dismissal sticky so edits do not re-open a rejected
+        # suggestion.
         def _norm(s: Optional[str]) -> str:
             return (s or "").strip()
         if description is not None and _norm(description) != _norm(task.description):
             task.description = description
-            task.llm_parse_status = "pending"
-            task.llm_inferred_deadline_id = None
-            task.llm_deadline_match_confidence = None
-            task.llm_deadline_candidates = None
-            task.llm_priority = None
-            task.llm_sub_items = None
-            task.llm_parsed_at = None
+            content_changed = True
+        if content_changed and task.deadline_id is None:
+            deadlines = (
+                self.db.query(Deadline)
+                .filter(
+                    Deadline.user_id == task.user_id,
+                    Deadline.voided_at.is_(None),
+                    Deadline.state.in_(("planned", "active")),
+                )
+                .all()
+            )
+            heuristic_match = (
+                score_deadlines(task.title, task.description, deadlines)
+                if deadlines
+                else None
+            )
+            _store_deadline_suggestions(task, heuristic_match)
         # Explicit deadline clear/rebind via the editor. `deadline_id=None`
         # remains "no change"; `clear_deadline=True` is the explicit sentinel.
         if clear_deadline:
@@ -1310,14 +1293,6 @@ class TaskManager:
         self.db.commit()
         self.db.refresh(task)
         _invalidate_user_runtime_caches(task.user_id, "reschedule_task")
-        
-        # Notion sync deferred to Redis queue (P0 latency fix 2026-04-15).
-        try:
-            self.redis.queue_notion_sync(task.task_id, {"action": "sync"}, user_id=str(task.user_id))
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Notion queue failed during reschedule_task: {e}", exc_info=True)
-
         try:
             self.redis.set_last_task(task.task_id, task.title, task.state.value if hasattr(task.state, "value") else str(task.state), user_id=str(task.user_id))
         except Exception as e:

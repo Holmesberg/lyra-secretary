@@ -24,9 +24,11 @@ for (let i = 2; i < process.argv.length; i += 1) {
 
 const frontendOrigin = args.get("frontend") || "https://lyraos.org";
 const apiOrigin = args.get("api") || "https://api.lyraos.org";
-const cookie = process.env.LYRA_COOKIE_HOLMESBERG || process.env.LYRA_COOKIE_ALINASSERSABRY || "";
+const proxyApi = args.get("proxy-api") === "true";
+const onboardingSkipSessionKey = "lyra:onboarding-skip-this-session";
+const cookie = process.env.LYRA_COOKIE_HOLMESBERG || "";
 if (cookie.length < 100) {
-  throw new Error("LYRA_COOKIE_HOLMESBERG or LYRA_COOKIE_ALINASSERSABRY is missing or looks truncated.");
+  throw new Error("LYRA_COOKIE_HOLMESBERG is missing or looks truncated.");
 }
 
 const outDir = path.join(
@@ -77,7 +79,7 @@ const scenarios = [
       reopen_after_clean_sessions: 3,
       new_clean_sessions_since_hold: 1,
       clean_sessions_until_reopen: 2,
-      message: "Insights are unlocked. Barzakh is holding these cards until there is new clean evidence after this hold. Complete 2 more cleanly stopped sessions to reopen this surface.",
+      message: "Insights are unlocked. LyraOS is holding these cards until there is new clean evidence after this hold. Complete 2 more cleanly stopped sessions to reopen this surface.",
       suppressed_generators: [],
     },
     expect: [/27 sessions analyzed/i, /2 clean stops to reopen/i, /new clean evidence/i],
@@ -143,6 +145,71 @@ function addCheck(name, ok, detail = null) {
   checks.push({ name, ok: Boolean(ok), detail });
 }
 
+async function installApiProxy(context, insightsRouteHandler, renderAckRouteHandler = null) {
+  const apiPattern = `${apiOrigin.replace(/\/$/, "")}/**`;
+  await context.route(apiPattern, async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === "/v1/analytics/insights") {
+      await insightsRouteHandler(route);
+      return;
+    }
+    if (
+      renderAckRouteHandler
+      && /^\/v1\/exposures\/[^/]+\/ack\/render$/.test(pathname)
+    ) {
+      await renderAckRouteHandler(route);
+      return;
+    }
+    const requestHeaders = request.headers();
+    const corsHeaders = {
+      "access-control-allow-origin": frontendOrigin,
+      "access-control-allow-credentials": "true",
+      "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+      "access-control-allow-headers": requestHeaders["access-control-request-headers"]
+        || "authorization,content-type,x-idempotency-key",
+      vary: "Origin",
+    };
+    if (request.method().toUpperCase() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: corsHeaders, body: "" });
+      return;
+    }
+
+    const headers = { ...requestHeaders };
+    for (const header of [
+      "host",
+      "origin",
+      "referer",
+      "sec-fetch-dest",
+      "sec-fetch-mode",
+      "sec-fetch-site",
+    ]) {
+      delete headers[header];
+    }
+
+    try {
+      const data = request.postDataBuffer();
+      const response = await context.request.fetch(request.url(), {
+        method: request.method(),
+        headers,
+        data: data && data.length > 0 ? data : undefined,
+        timeout: 45_000,
+        failOnStatusCode: false,
+      });
+      await route.fulfill({
+        status: response.status(),
+        headers: { ...response.headers(), ...corsHeaders },
+        body: await response.body(),
+      });
+    } catch (error) {
+      if (/Target page, context or browser has been closed/i.test(String(error?.message || error))) {
+        return;
+      }
+      await route.abort("failed").catch(() => {});
+    }
+  });
+}
+
 async function screenshot(page, name) {
   const file = path.join(outDir, `${name}.png`);
   await page.screenshot({ path: file, fullPage: true });
@@ -154,8 +221,14 @@ function textHasForbiddenClaim(text) {
   return forbiddenClaimWords.filter((word) => lower.includes(word));
 }
 
-async function newPage(browser, scenarioName, routeHandler) {
+async function newPage(browser, scenarioName, routeHandler, renderAckRouteHandler = null) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  await context.addInitScript((key) => {
+    window.sessionStorage.setItem(key, "1");
+  }, onboardingSkipSessionKey);
+  if (proxyApi) {
+    await installApiProxy(context, routeHandler, renderAckRouteHandler);
+  }
   await context.addCookies(parseAndExpandCookies(cookie, frontendOrigin));
   const consoleErrors = [];
   const page = await context.newPage();
@@ -167,8 +240,113 @@ async function newPage(browser, scenarioName, routeHandler) {
   page.on("pageerror", (error) => {
     consoleErrors.push(`pageerror: ${error.message}`);
   });
-  await page.route(`${apiOrigin}/v1/analytics/insights**`, routeHandler);
+  if (!proxyApi) {
+    await page.route(`${apiOrigin}/v1/analytics/insights**`, routeHandler);
+    if (renderAckRouteHandler) {
+      await page.route(
+        `${apiOrigin}/v1/exposures/*/ack/render`,
+        renderAckRouteHandler,
+      );
+    }
+  }
   return { context, page, consoleErrors, scenarioName };
+}
+
+async function runExposureAckScenario(browser) {
+  const base = scenarios.find((scenario) => scenario.name === "unlocked").payload;
+  const exposureId = `fixture-insights-${Date.now()}`;
+  const renderSnapshot = {
+    schema_version: "analytics_insights_exposure_snapshot_v1",
+    surface_id: "analytics.insights",
+    insight_count: base.insights.length,
+    insight_ids: base.insights.map((insight) => insight.id),
+    audit_envelopes: [],
+  };
+  const payload = {
+    ...base,
+    exposure_id: exposureId,
+    render_snapshot: renderSnapshot,
+  };
+  const ackRequests = [];
+  const { context, page, consoleErrors } = await newPage(
+    browser,
+    "exposure-ack",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(payload),
+      });
+    },
+    async (route) => {
+      const request = route.request();
+      let body = null;
+      try {
+        body = JSON.parse(request.postData() || "{}");
+      } catch (error) {
+        body = { parse_error: String(error?.message || error) };
+      }
+      ackRequests.push({
+        method: request.method(),
+        pathname: new URL(request.url()).pathname,
+        body,
+      });
+      if (ackRequests.length === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "forced fixture retry" }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ack_id: `fixture-ack-${exposureId}`,
+          exposure_id: exposureId,
+          event_type: "render",
+          user_id: 0,
+          acked_at: new Date().toISOString(),
+          created: true,
+        }),
+      });
+    },
+  );
+  try {
+    await page.goto(`${frontendOrigin}/insights`, { waitUntil: "domcontentloaded" });
+    await page.getByText(/afternoon estimates are running long/i).waitFor({ timeout: 15_000 });
+    const deadline = Date.now() + 10_000;
+    while (ackRequests.length < 2 && Date.now() < deadline) {
+      await page.waitForTimeout(100);
+    }
+    await screenshot(page, "exposure-ack-desktop");
+
+    addCheck("insights mounted render retries a failed acknowledgement", ackRequests.length === 2, {
+      request_count: ackRequests.length,
+    });
+    const finalAck = ackRequests.at(-1);
+    addCheck("insights render acknowledgement uses the canonical owner route", Boolean(
+      finalAck
+      && finalAck.method === "POST"
+      && finalAck.pathname === `/v1/exposures/${exposureId}/ack/render`
+    ), finalAck);
+    addCheck("insights render acknowledgement binds surface, event, and snapshot", Boolean(
+      finalAck
+      && finalAck.body?.surface_id === "analytics.insights"
+      && finalAck.body?.client_event_id === `analytics.insights:${exposureId}`
+      && JSON.stringify(finalAck.body?.content_snapshot) === JSON.stringify(renderSnapshot)
+    ), finalAck?.body || null);
+    const unexpectedErrors = consoleErrors.filter(
+      (entry) => !entry.includes("503 (Service Unavailable)"),
+    );
+    addCheck("insights render acknowledgement retry has no unexpected page errors", unexpectedErrors.length === 0, {
+      console_errors: consoleErrors,
+      unexpected_errors: unexpectedErrors,
+    });
+  } finally {
+    await context.close();
+  }
 }
 
 async function runScenario(browser, scenario) {
@@ -292,12 +470,20 @@ try {
   for (const scenario of scenarios) {
     await runScenario(browser, scenario);
   }
+  await runExposureAckScenario(browser);
   await runLatencyScenario(browser);
   await runErrorScenario(browser);
   result = {
     ok: checks.every((check) => check.ok),
     frontend_origin: frontendOrigin,
     api_origin: apiOrigin,
+    proxy_api: proxyApi,
+    fixture_only: true,
+    fixture_overrides: [
+      "session_only_onboarding_skip",
+      "forced_insights_payload",
+      "forced_render_ack_transport",
+    ],
     output_dir: outDir,
     checks,
     issues,
@@ -307,6 +493,13 @@ try {
     ok: false,
     frontend_origin: frontendOrigin,
     api_origin: apiOrigin,
+    proxy_api: proxyApi,
+    fixture_only: true,
+    fixture_overrides: [
+      "session_only_onboarding_skip",
+      "forced_insights_payload",
+      "forced_render_ack_transport",
+    ],
     output_dir: outDir,
     error: error instanceof Error ? error.message : String(error),
     checks,

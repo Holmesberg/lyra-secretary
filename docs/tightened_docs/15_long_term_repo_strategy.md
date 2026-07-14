@@ -40,7 +40,7 @@ Admit new constructs only after:
 Use zones:
 
 - `docs/parked_ideas.md`: raw ideas.
-- `docs/jarvis_hypothesis_log.md`: operator-generated hypotheses.
+- `docs/archive/legacy/ai/jarvis_hypothesis_log.md`: operator-generated hypotheses.
 - `docs/repo_alignment_audit/`: governance findings.
 - `backend/app/services/inference_engine.py`: only promoted shared primitives.
 - user-facing frontend: only calibrated, exposure-aware claims.

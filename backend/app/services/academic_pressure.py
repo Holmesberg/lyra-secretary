@@ -1,7 +1,7 @@
 """Academic pressure map service.
 
 V1 deliberately avoids new persistence. It reads existing deadlines,
-planned Barzakh tasks, and read-only calendar context to produce a bounded,
+planned LyraOS tasks, and read-only calendar context to produce a bounded,
 transparent workload-pressure snapshot. It does not claim behavioral
 personalization and does not feed clean learning paths.
 """
@@ -30,11 +30,19 @@ from app.schemas.academic import (
     AcademicPressureItem,
     AcademicPressureMapResponse,
     AcademicPressureLevel,
+    AcademicProviderReadStatus,
     AcademicRecoveryOption,
     AcademicSourceSummary,
     AcademicTrustState,
 )
-from app.services.calendar_sync import fetch_google_events
+from app.services.calendar_sync import fetch_google_events_with_status
+from app.services.academic_pressure_projection_builder import (
+    build_demand_coverage_projection,
+)
+from app.services.academic_pressure_projection import (
+    TimeInterval,
+    union_interval_minutes,
+)
 from app.utils.time_utils import now_utc, strip_tz
 
 
@@ -109,7 +117,7 @@ _TYPE_PRIORS: dict[str, _TypePrior] = {
 
 
 def is_academic_pressure_task_category(category: str | None) -> bool:
-    """True for Barzakh task categories that belong on the academic map.
+    """True for LyraOS task categories that belong on the academic map.
 
     Governance distinction:
       - academic = institutional/prescheduled academic obligations
@@ -273,7 +281,7 @@ def _estimate(deadline: Deadline) -> AcademicPressureEstimate:
     if deadline.external_source:
         assumptions.append("external obligation metadata; provider source remains canonical")
     else:
-        assumptions.append("manually/native Barzakh deadline; coverage needs user confirmation")
+        assumptions.append("manually/native LyraOS deadline; coverage needs user confirmation")
     return AcademicPressureEstimate(
         low_minutes=low,
         high_minutes=max(high, low + 30),
@@ -300,7 +308,7 @@ def _task_estimate(task: Task) -> AcademicPressureEstimate:
         confidence = "medium"
     else:
         assumptions = [
-            "prescheduled academic task in Barzakh",
+            "prescheduled academic task in LyraOS",
             "planned duration is visible schedule structure",
             "coverage/source still needs confirmation before auto-plan generation",
         ]
@@ -313,21 +321,39 @@ def _task_estimate(task: Task) -> AcademicPressureEstimate:
     )
 
 
-def _calendar_busy_minutes(user_id: int, user: User | None, start: datetime, end: datetime) -> tuple[int, bool]:
+def _calendar_busy_minutes(
+    user_id: int,
+    user: User | None,
+    start: datetime,
+    end: datetime,
+) -> tuple[int | None, bool, AcademicProviderReadStatus]:
     if user is None or not user.google_refresh_token:
-        return 0, False
-    events = fetch_google_events(user_id, start, end)
-    total = 0
-    for event in events:
+        return None, False, "not_connected"
+    result = fetch_google_events_with_status(user_id, start, end)
+    if result.status not in {"available", "partial"}:
+        return None, True, result.status
+    intervals: list[TimeInterval] = []
+    for index, event in enumerate(result.events):
         try:
-            event_start = datetime.fromisoformat(event.start)
-            event_end = datetime.fromisoformat(event.end)
+            event_start = strip_tz(datetime.fromisoformat(event.start))
+            event_end = strip_tz(datetime.fromisoformat(event.end))
         except ValueError:
             continue
-        if event_end <= event_start:
+        if event_start is None or event_end is None or event_end <= event_start:
             continue
-        total += int((event_end - event_start).total_seconds() / 60)
-    return total, True
+        intervals.append(
+            TimeInterval(
+                interval_id=f"calendar:{index}:{event.id}",
+                start=event_start,
+                end=event_end,
+            )
+        )
+    busy = union_interval_minutes(
+        intervals,
+        window_start=start,
+        window_end=end,
+    )
+    return busy.total_minutes, True, result.status
 
 
 def _planned_task_minutes(db: Session, user_id: int, start: datetime, end: datetime) -> int:
@@ -359,6 +385,29 @@ def _planned_academic_task_rows(
         .filter(Task.planned_end_utc > start)
         .filter(Task.category.in_(tuple(ACADEMIC_PRESSURE_TASK_CATEGORIES)))
         .order_by(Task.planned_start_utc.asc())
+        .all()
+    )
+
+
+def _future_projection_task_rows(
+    db: Session,
+    user_id: int,
+    start: datetime,
+    end: datetime,
+) -> list[Task]:
+    return (
+        db.query(Task)
+        .filter(Task.user_id == user_id)
+        .filter(Task.voided_at.is_(None))
+        .filter(Task.is_anchor.is_(False))
+        .filter(
+            Task.state.in_(
+                [TaskState.PLANNED, TaskState.EXECUTING, TaskState.PAUSED]
+            )
+        )
+        .filter(Task.planned_start_utc < end)
+        .filter(Task.planned_end_utc > start)
+        .order_by(Task.planned_start_utc.asc(), Task.task_id.asc())
         .all()
     )
 
@@ -403,7 +452,7 @@ def _pressure_summary(
     if high_pressure:
         return f"This week looks compressed: {high_pressure} pressure points and {load_phrase}."
     if planned_minutes or calendar_busy:
-        source = "calendar and Barzakh tasks" if gcal_connected else "Barzakh tasks"
+        source = "calendar and LyraOS tasks" if gcal_connected else "LyraOS tasks"
         return f"{load_phrase} sits beside known scheduled load from {source}."
     return f"{load_phrase}; confirm coverage before turning it into a plan."
 
@@ -438,7 +487,7 @@ def _compression_points(
                 kind="overdue",
                 title="Overdue academic pressure",
                 detail=(
-                    f"{len(overdue)} item(s) are overdue. Barzakh does not infer completion "
+                    f"{len(overdue)} item(s) are overdue. LyraOS does not infer completion "
                     "from silence; confirm, reschedule, or clear them."
                 ),
                 obligation_ids=[item.obligation_id for item in overdue],
@@ -524,48 +573,52 @@ def _recovery_options(
         return [
             AcademicRecoveryOption(
                 action="clear_or_ignore",
-                label="Keep the window clean",
+                label="Nothing to plan in this window",
                 detail="No active academic pressure is visible here. Add or import deadlines, lectures, labs, tutorials, or study blocks if something is missing.",
                 obligation_ids=[],
             )
         ]
 
     options: list[AcademicRecoveryOption] = []
-    high_or_overdue = [item for item in items if item.pressure_level in ("high", "overdue")]
-    largest = sorted(items, key=lambda item: item.estimate.high_minutes, reverse=True)[:2]
+    high_or_overdue = [
+        item
+        for item in items
+        if item.pressure_level in ("high", "overdue")
+    ]
+    draft_items = high_or_overdue or sorted(
+        items,
+        key=lambda item: item.estimate.high_minutes,
+        reverse=True,
+    )[:2]
     if coverage_questions:
         options.append(
             AcademicRecoveryOption(
                 action="confirm_coverage",
-                label="Confirm coverage",
-                detail="Lock what these deadlines actually cover before Barzakh turns them into study blocks.",
+                label="Coverage still needs confirmation",
+                detail="Review the source details for these obligations before using them in a plan draft.",
                 obligation_ids=[q.obligation_id for q in coverage_questions],
             )
         )
-    if high_or_overdue:
+    if draft_items:
         options.append(
             AcademicRecoveryOption(
                 action="create_plan",
-                label="Create a recovery plan",
-                detail="Turn the due-soon pressure points into editable study blocks.",
-                obligation_ids=[item.obligation_id for item in high_or_overdue],
-            )
-        )
-    if largest:
-        options.append(
-            AcademicRecoveryOption(
-                action="split_into_blocks",
-                label="Split the biggest work",
-                detail="Break the largest visible obligations into smaller blocks before they compress the week.",
-                obligation_ids=[item.obligation_id for item in largest],
+                label="Draft study blocks",
+                detail=(
+                    "Preview editable study blocks from the current provisional ranges. "
+                    "Confirm source coverage before relying on this draft."
+                    if coverage_questions
+                    else "Preview editable study blocks for obligations whose coverage is already clear."
+                ),
+                obligation_ids=[item.obligation_id for item in draft_items],
             )
         )
     if not gcal_connected:
         options.append(
             AcademicRecoveryOption(
                 action="review_calendar",
-                label="Review schedule context",
-                detail="Calendar is not connected, so Barzakh can show academic load but not true free-time mismatch.",
+                label="Add schedule context",
+                detail="Calendar is not connected. Open Integrations to add read-only schedule context.",
                 obligation_ids=[],
             )
         )
@@ -576,17 +629,28 @@ def _capacity_context(
     low: int,
     high: int,
     planned_minutes: int,
-    calendar_busy: int,
+    calendar_busy: int | None,
     gcal_connected: bool,
+    calendar_read_status: AcademicProviderReadStatus,
 ) -> AcademicCapacityContext:
-    if gcal_connected:
+    if calendar_read_status == "available":
         caveat = (
-            "Known busy time comes from connected Google Calendar and planned Barzakh tasks; "
-            "unscheduled real-life constraints may still be missing."
+            "Calendar busy time is available and planned LyraOS tasks are reported separately; "
+            "neither establishes true free time."
+        )
+    elif calendar_read_status == "partial":
+        caveat = (
+            "Google Calendar coverage is partial for this view; known busy time is included, "
+            "but incomplete coverage cannot establish true free time."
+        )
+    elif calendar_read_status == "unavailable":
+        caveat = (
+            "Google Calendar is connected but unavailable for this view; busy time is unavailable, "
+            "not zero, and true free time remains unknown."
         )
     else:
         caveat = (
-            "Calendar is not connected, so Barzakh shows visible academic pressure and planned Barzakh load, "
+            "Calendar is not connected, so LyraOS shows visible academic pressure and planned LyraOS load, "
             "not true free time."
         )
     return AcademicCapacityContext(
@@ -595,6 +659,7 @@ def _capacity_context(
         estimated_academic_low_minutes=low,
         estimated_academic_high_minutes=high,
         google_calendar_connected=gcal_connected,
+        google_calendar_read_status=calendar_read_status,
         caveat=caveat,
     )
 
@@ -702,7 +767,13 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
 
     low_total = sum(item.estimate.low_minutes for item in items)
     high_total = sum(item.estimate.high_minutes for item in items)
-    calendar_busy, gcal_connected = _calendar_busy_minutes(uid, user, generated_at, window_end)
+    calendar_busy, gcal_connected, calendar_read_status = _calendar_busy_minutes(
+        uid,
+        user,
+        generated_at,
+        window_end,
+    )
+    legacy_calendar_busy = calendar_busy or 0
     planned_minutes = _planned_task_minutes(db, uid, generated_at, window_end)
     native_count = sum(1 for d in deadlines if not d.external_source)
     external_count = sum(1 for d in deadlines if d.external_source)
@@ -726,6 +797,14 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
         warnings.append("Some imported items need coverage confirmation before plan generation.")
     if not gcal_connected:
         warnings.append("Google Calendar is not connected, so free-time mismatch is incomplete.")
+    elif calendar_read_status == "partial":
+        warnings.append(
+            "Google Calendar coverage is partial for this view; known busy time is included, but more may be missing."
+        )
+    elif calendar_read_status == "unavailable":
+        warnings.append(
+            "Google Calendar is unavailable for this view; calendar busy time is unavailable, not zero."
+        )
     if read_only_pressure_mode_enabled():
         warnings.append(
             "Read-only pressure safe mode is active; recovery nudges and mutations are disabled."
@@ -736,6 +815,18 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
         warnings.append("Baseet pressure inputs are disabled by operator safety switch.")
 
     coverage_questions = _coverage_questions(items)
+    demand_coverage_projection = build_demand_coverage_projection(
+        items=items,
+        future_tasks=_future_projection_task_rows(
+            db,
+            uid,
+            generated_at,
+            window_end,
+        ),
+        planning_context_tasks=academic_tasks,
+        window_start=generated_at,
+        window_end=window_end,
+    )
     return AcademicPressureMapResponse(
         generated_at_utc=generated_at,
         horizon_days=horizon_days,
@@ -745,7 +836,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             low_total,
             high_total,
             planned_minutes,
-            calendar_busy,
+            legacy_calendar_busy,
             gcal_connected,
         ),
         items=items,
@@ -754,7 +845,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             low_total,
             high_total,
             planned_minutes,
-            calendar_busy,
+            legacy_calendar_busy,
             gcal_connected,
         ),
         recovery_options=_recovery_options(items, coverage_questions, gcal_connected),
@@ -765,9 +856,11 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             planned_minutes,
             calendar_busy,
             gcal_connected,
+            calendar_read_status,
         ),
         estimated_low_minutes=low_total,
         estimated_high_minutes=high_total,
+        demand_coverage_projection=demand_coverage_projection,
         source_summary=AcademicSourceSummary(
             deadlines_total=len(deadlines),
             external_obligation_count=external_count,
@@ -783,6 +876,7 @@ def build_pressure_map(db: Session, horizon_days: int = 14) -> AcademicPressureM
             academic_task_minutes=academic_task_minutes,
             study_task_minutes=study_task_minutes,
             google_calendar_connected=gcal_connected,
+            google_calendar_read_status=calendar_read_status,
             calendar_busy_minutes=calendar_busy,
             planned_lyra_minutes=planned_minutes,
         ),

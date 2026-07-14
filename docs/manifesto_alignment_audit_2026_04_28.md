@@ -1,4 +1,8 @@
 # MANIFESTO Alignment Audit — Magic-for-Alpha Plan
+
+> Historical audit. Direct NIM/Ollama task enrichment was retired on
+> 2026-07-11. References below record the former design and do not authorize
+> current runtime behavior.
 **Date:** 2026-04-28
 **Scope:** Cross-checked the 3-commit magic-for-alpha plan (W1-frontend + Tier chip + P0 fixes + funnel + onboarding revive; W2 resume prediction; W3 task-end prediction + Rule 18) against MANIFESTO v1.15 (1282 lines, Rules 1–17, VTs 1–27, H3 signatures S1–S5).
 

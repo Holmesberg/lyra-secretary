@@ -1,6 +1,6 @@
 # Current Transition State
 
-**Date:** 2026-07-01
+**Date:** 2026-07-12
 **Status:** Active implementation orientation for the freeze-closure and safe
 refactor cycle.
 
@@ -13,13 +13,14 @@ cohort expansion.
 
 ## Active Branch Frame
 
-The active implementation branch is:
+The active implementation branch is the broad freeze-closure refactor branch:
 
 ```text
-wave-5-sovereignty-integrity-cycle
+refactor/freeze-closure
 ```
 
-The branch scope is freeze-closure only:
+Earlier wave branches remain historical merge context. The branch scope is
+freeze-closure only:
 
 ```text
 measurement forensics -> operator truth -> regression gates -> small safe seams
@@ -30,21 +31,43 @@ complexity. Complexity reduction is only performed when supported by
 independent evidence, reversible seams, and mechanically enforced authority
 boundaries.
 
-This is a semantics-preserving stabilization/refactor pass. It should make
-existing behavior easier to verify and maintain, not create stronger claims,
-new surfaces, or new runtime authority.
+This is a stabilization/refactor pass. It should make existing behavior easier
+to verify and maintain, not create stronger claims, new surfaces, or new
+runtime authority. The only approved runtime behavior expansion is the
+bounded, founder-only pause-policy v2 exception in the active core-loop plan;
+it grants no authority to resume-policy expansion or another prediction
+family.
 
-Current sequence:
+The frozen founder replay completed on 2026-07-14 and stopped at calibration:
+no configuration met the predefined opportunity-distribution gate, so the
+untouched holdout was not evaluated. Pause-policy v2 remains disabled and the
+shipped v1 policy remains unchanged. This result closes the approved replay;
+it does not authorize retuning, a new prediction family, or a cohort prior.
 
-1. E0 exposure forensics and repair ledger.
-2. R2 operator cockpit trusted/red-for-real.
-3. S1c hardening into gates.
-4. R5a stale docs and authority cleanup before further extraction.
-5. R3/R4 behavior-preserving extraction in small reversible seams, only while
-   those seams reduce operational danger.
-6. R5b public proof/runtime runbooks.
-7. R6 final cohort proof or controlled evidence-collection alpha.
-8. Post-freeze computation planning only after R6.
+The Pressure Map dedicated tab is an approved **design target**, not an
+approved runtime expansion. Current Pressure Map work may correct shipped
+arithmetic and authority defects, demote unsupported actions, preserve
+browser-owned exposure truth, and make the existing Pulse summary truthful.
+Adding a route, user input, scenario engine, persistence model, capacity
+authority, or mutation command requires the activation and seam approvals in
+the active core-loop plan.
+
+The founder-approved current sequence is defined by
+`docs/core_product_loop_refactor_plan_2026_07_11.md`:
+
+1. recover, separate, verify, commit, and push the current checkpoint;
+2. establish the shipped-feature preservation registry and verifier truth;
+3. make browser acknowledgement the only browser-render authority;
+4. preserve onboarding and cold-start behavior;
+5. complete capture and route parity;
+6. correct Pressure Map count-once demand truth, demote unsupported actions,
+   and prove the existing Pulse summary has day-zero orientation value;
+7. stop for the explicit Pressure Map activation checkpoint before any
+   dedicated-tab runtime work;
+8. prove execution/recovery and calibrate only founder-specific pause-policy
+   v2 under frozen burden and temporal-holdout rules;
+9. extract structure only when founder dogfood identifies a present need;
+10. consolidate findings and close with local, CI, and hosted-public proof.
 
 No backend god-module extraction should begin while `/operator` has unresolved
 exposure blockers. A cockpit may be implementation-green while cohort-yellow
@@ -66,14 +89,14 @@ is explicitly authorized.
 Use these documents as the current authority chain:
 
 1. `docs/AUTHORITY.md` - cross-repo authority hierarchy.
-2. `docs/single_authority_contract.md` - one owner per truth class, mutation
+2. `docs/core_product_loop_refactor_plan_2026_07_11.md` - active
+   founder-approved implementation plan and gate sequence.
+3. `docs/single_authority_contract.md` - one owner per truth class, mutation
    path, and claim path.
-3. `docs/operator_dashboard_contract.md` - implementation-green vs
+4. `docs/operator_dashboard_contract.md` - implementation-green vs
    cohort-green and cockpit readiness semantics.
-4. `docs/runbooks/post_wave_dogfood_loop.md` - reusable browser/API/export
+5. `docs/runbooks/post_wave_dogfood_loop.md` - reusable browser/API/export
    verification loop plus optional CI/CD proof collection after push.
-5. `docs/registries/refactor_stabilization_ledger.md` - wave/seam audit
-   trail, browser artifacts, rollback notes, and issue references.
 6. `docs/audits/e0_exposure_forensics_2026_07_01.md` - E0 row-level exposure
    forensics and repair evidence.
 7. `docs/audits/refactor_spaghetti_audit_2026_06_29.md` - documentation-only
@@ -93,12 +116,16 @@ Use these documents as the current authority chain:
    `docs/tightened_docs/17_immediate_freeze_targets.md` - semantic-entropy and
    freeze-gate constraints.
 
-`docs/building_phases.md` remains useful historical/product roadmap context,
+`docs/registries/refactor_stabilization_ledger.md` is chronological audit
+evidence, not authority. Read its latest entry for current artifacts and retain
+older contradictions as historical lineage.
+
+`docs/archive/legacy/planning/building_phases.md` remains useful historical/product roadmap context,
 but it is stale April phase planning and is not current implementation
 authority.
 
-`docs/AGENT_HANDOFF.md` remains historical onboarding context only. It cannot
-authorize JARVIS work, OpenClaw runtime mutation, AI synthesis, provider
+`docs/archive/AGENT_HANDOFF.md` remains historical onboarding context only. It
+cannot authorize JARVIS work, reasoning-adapter runtime mutation, AI synthesis, provider
 adapters, passive tracking, new insight surfaces, or behavior-transition
 equations.
 
@@ -108,14 +135,14 @@ including "ship", "allowed", "approved", schema sketches, passive tracking,
 AI/synthesis, provider adapters, insight surfaces, or behavior equations,
 cannot authorize runtime work unless promoted by the authority chain above:
 
-- `docs/building_phases.md`
-- `docs/phase_6_architecture_backlog.md`
-- `docs/deadline_mechanism_design.md`
-- `docs/academic_execution_substrate.md`
-- `docs/academic_asset_velocity_and_evidence_fusion_plan.md`
-- `docs/core_product_loop_wave_plan.md`
-- `docs/AGENT_HANDOFF.md`
-- `docs/provider_adapter_contract.md`
+- `docs/archive/legacy/planning/building_phases.md`
+- `docs/archive/legacy/planning/phase_6_architecture_backlog.md`
+- `docs/archive/legacy/provider_academic/deadline_mechanism_design.md`
+- `docs/archive/legacy/provider_academic/academic_execution_substrate.md`
+- `docs/archive/legacy/provider_academic/academic_asset_velocity_and_evidence_fusion_plan.md`
+- `docs/archive/legacy/planning/core_product_loop_wave_plan.md`
+- `docs/archive/AGENT_HANDOFF.md`
+- `docs/archive/legacy/provider_academic/provider_adapter_contract.md`
 
 ---
 
@@ -136,6 +163,12 @@ The current freeze-closure pass may:
 - and clarify documentation lineage when stale docs could authorize wrong
   runtime behavior.
 
+Within the shipped Pressure Map, it may also correct count-once attribution,
+provider/freshness truth, unsupported control presentation, exposure
+measurement, and truthful scope/unknown disclosure without changing estimate
+priors or creating new authority. Capacity and collision remain `UNKNOWN`
+while no explicit availability denominator exists.
+
 The current freeze-closure pass must not:
 
 - add new user-facing analytics claims,
@@ -146,8 +179,11 @@ The current freeze-closure pass must not:
 - implement adaptive scheduling,
 - change clean-data semantics,
 - create new user-burden inputs,
+- add the Pressure Map route, dedicated-tab shell, scenario engine, persistent
+  estimate correction, availability model, or new recovery command before the
+  explicit activation/authority checkpoints,
 - introduce schema migrations without explicit user approval,
-- wire OpenClaw/GPT into product runtime,
+- wire ReasoningRuntimeContract/OpenClawAdapter into product runtime,
 - add new provider adapters,
 - add passive tracking,
 - or weaken operator denominators to force a green readiness state.
@@ -201,7 +237,7 @@ The following remain later phases and require a new explicit plan:
 
 - Admission/Coverage Gate, Execution Drift Decomposition, Re-entry Resolution
   Survival, and Pressure-to-Execution Funnel beyond operator diagnostics.
-- AI synthesis over evidence packets or OpenClaw/GPT product wiring.
+- AI synthesis over evidence packets or ReasoningRuntimeContract/OpenClawAdapter product wiring.
 - Public cascade intervention surfaces.
 - Behavior-transition runtime equations.
 - New provider adapters or passive tracking.
@@ -376,7 +412,7 @@ added from those waves until a current boundary failure promotes one of them.
 
 | Wave | Status | Promotion condition |
 | --- | --- | --- |
-| Wave 7: Agent / JARVIS / OpenClaw authority | Parked. | Promote only if a mutation-capable agent flow or confirmation path creates a current authority risk. |
+| Wave 7: Agent / JARVIS / reasoning-adapter authority | Parked. | Promote only if a mutation-capable agent flow or confirmation path creates a current authority risk. |
 | Wave 8: Repair jobs and mutation quarantine | Parked. | Promote only if repair-derived state can enter clean analytics or public evidence without an admission rule. |
 | Wave 9: Test suite as membrane system | Parked. | Promote only if tests block boundary simplification by preserving decorative internals. |
 | Wave 10: Public / AI-readable copy alignment | Parked. | Promote only if public or AI-readable copy implies authority the runtime does not have. |

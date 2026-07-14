@@ -1,4 +1,4 @@
-"""SQLAlchemy models for Barzakh."""
+"""SQLAlchemy models for LyraOS."""
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -153,7 +153,7 @@ class Task(Base):
     # Unplanned execution tracking
     unplanned_reason: Mapped[Optional[str]] = mapped_column(String(30))
 
-    # Notion sync
+    # Legacy external-sync columns retained until an approved schema migration.
     notion_page_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True)
 
     # Multi-user ownership (alembic 014)
@@ -172,8 +172,8 @@ class Task(Base):
 
     # Loop 11 — deadline mechanism foundation (alembic 033, 2026-04-26).
     # Pre-registered MANIFESTO Rules 14, 15, 16 + Rule 12 amendment.
-    # See `docs/feedback_loops_closure_plan.md §Loop 11` and
-    # `docs/deadline_mechanism_design.md`.
+    # See `docs/archive/legacy/planning/feedback_loops_closure_plan.md §Loop 11` and
+    # `docs/archive/legacy/provider_academic/deadline_mechanism_design.md`.
     deadline_id: Mapped[Optional[str]] = mapped_column(
         String(36),
         ForeignKey("deadline.deadline_id"),
@@ -188,17 +188,12 @@ class Task(Base):
     scope_bullet_count_at_execute: Mapped[Optional[int]] = mapped_column(Integer)
 
     # ── LLM enrichment fields (alembic 036, magic-for-alpha 2026-04-28) ──
-    # Populated by the async background `llm_enrichment` worker, NOT by
-    # the fast-path POST /v1/create. Critical guardrails:
-    #   - Regex output (`scope_bullet_count_at_plan`) and parser-based
-    #     `deadline_id` remain canonical. These llm_* fields are a parallel
-    #     signal the user can confirm into canonical via a one-tap chip.
-    #   - `llm_parse_status` flips: pending → enriched | unavailable | failed.
-    #     UI degrades to regex output when status != 'enriched'.
-    #   - `llm_inferred_deadline_id` does NOT replace `deadline_id`;
-    #     `POST /v1/tasks/{id}/llm-confirm` copies it across on user accept.
+    # Provider runtime retired in 2026-07. These columns remain for
+    # historical export/delete compatibility until a separately approved
+    # schema migration. Deterministic deadline suggestions temporarily reuse
+    # the candidate columns; no model provider writes them.
     llm_parse_status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
+        String(20), nullable=False, default="retired"
     )
     llm_priority: Mapped[Optional[int]] = mapped_column(Integer)
     llm_inferred_deadline_id: Mapped[Optional[str]] = mapped_column(
@@ -206,26 +201,14 @@ class Task(Base):
         ForeignKey("deadline.deadline_id", ondelete="SET NULL"),
     )
     llm_deadline_match_confidence: Mapped[Optional[float]] = mapped_column(Float)
-    # Tier system (operator-locked UX 2026-04-28):
-    #   Tier 1 — top confidence > 0.85: silent auto-chip with confirm
-    #   Tier 2 — top confidence 0.45-0.85: "Related to one of these?"
-    #             rendering top 2-3 candidates from this list
-    #   Tier 3 — top confidence < 0.45: no chip
-    #   Tier 4 — manual override always via DeadlinePickerSlot
+    # Historical storage reused by the deterministic deadline-suggestion UI.
     # Shape: [{"deadline_id": "...", "title": "...", "confidence": 0..1}, ...]
     llm_deadline_candidates: Mapped[Optional[list]] = mapped_column(JSON)
     llm_sub_items: Mapped[Optional[list]] = mapped_column(JSON)
     llm_parsed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    # Set by POST /v1/tasks/{id}/reject-llm-binding (Workstream 4) when
-    # the user explicitly rejects the LLM-suggested deadline binding.
+    # Historical dismissal field reused by deterministic suggestions.
     llm_binding_rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    # Trust-not-rewrite contract (alembic 039, 2026-04-28). When a
-    # heuristic-bound or user-bound task gets a different deadline
-    # suggestion from the async LLM enrichment, we DO NOT silently
-    # rewrite task.deadline_id — that breaks user trust ("the chip
-    # changed under me"). Instead, the alternative is stored here as a
-    # JSONB suggestion the chip can render as "Possible better match
-    # — [keep current] [switch]". User decides.
+    # Historical model alternative. No active runtime writes this field.
     # Shape: {"deadline_id": "...", "title": "...", "confidence": 0..1,
     #         "from_source": "llm_auto" | "heuristic_substring" | ...}
     llm_alternative_suggestion: Mapped[Optional[dict]] = mapped_column(JSON)
@@ -1078,7 +1061,7 @@ class ResumePredictionLog(Base):
     Cold-start: when fewer than 5 samples exist for the cell OR the
     user has <7 days of pause history, mechanism='cold_start_synthetic'
     and the trigger is a flat 30-min cap with observational copy
-    "Barzakh hasn't seen enough yet — picking it up?".
+    "LyraOS hasn't seen enough yet — picking it up?".
 
     Pre-registered footprint: VT-17 sibling (instrument-intervention
     threats apply symmetrically — anchor drift + induced-resume risk).
@@ -1124,7 +1107,7 @@ class ResumePredictionLog(Base):
 class CalibrationNudgeEvent(Base):
     """Per-fire calibration nudge event + decision + outcome (Loop 1).
 
-    Pre-registered in `docs/feedback_loops_closure_plan.md §Loop 1`. Captures
+    Pre-registered in `docs/archive/legacy/planning/feedback_loops_closure_plan.md §Loop 1`. Captures
     every NewTaskModal nudge fire + user decision (accepted | dismissed) +
     the executed_duration_minutes outcome once the bound task transitions
     to EXECUTED. Enables the "did the nudge improve calibration?" research
@@ -1164,7 +1147,7 @@ class CalibrationNudgeEvent(Base):
     task_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("task.task_id"), nullable=False
     )
-    # What Barzakh suggested at nudge-fire time.
+    # What LyraOS suggested at nudge-fire time.
     suggested_duration_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False
     )
@@ -1244,7 +1227,7 @@ class ReflectionViewLog(Base):
     dismissed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     dwell_seconds: Mapped[Optional[int]] = mapped_column(Integer)
     # Decision outcome on decisional surfaces. Per Phase 6 V3 spec
-    # (`docs/phase_6_architecture_backlog.md:227`): for creation_nudge
+    # (`docs/archive/legacy/planning/phase_6_architecture_backlog.md:227`): for creation_nudge
     # this carries 'kept' / 'adjusted' / 'dismissed'. NULL on
     # informational surfaces (micro_mirror, banner). Added in alembic 035.
     outcome: Mapped[Optional[str]] = mapped_column(String(20))
@@ -1582,7 +1565,7 @@ class JarvisInvocation(Base):
     )
     tool_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     # OpenAI-style tool args dict. Bounded by the tool schema declared in
-    # services/jarvis_tools.py — most args are scalars or short strings.
+    # Retired JARVIS executors used mostly scalar or short-string arguments.
     tool_args: Mapped[Optional[dict]] = mapped_column(JSON)
     tool_result_summary: Mapped[Optional[str]] = mapped_column(String(500))
     # 'executed' | 'pending_confirmation' | 'rejected' | 'failed'

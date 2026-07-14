@@ -22,6 +22,7 @@ from app.services.cortex import (
     planning_calibration_query,
     task_metrics,
 )
+from app.services.exposure_ledger import record_decision
 from tests.conftest import auth_headers
 
 
@@ -156,6 +157,8 @@ def test_cortex_event_envelope_is_exact_and_rejects_derived_or_latent_payload():
         "exposure_state",
         "payload",
     ]
+    assert evt.to_dict()["provenance"] == "observed"
+    assert evt.to_dict()["exposure_state"] == "unknown"
 
     with pytest.raises(ValueError, match="derived"):
         cortex_event(
@@ -389,9 +392,45 @@ def test_cortex_diagnostics_endpoint_returns_contract_counts(db, client):
     assert response.status_code == 200
     body = response.json()
     assert body["schema_version"] == "cortex_contract_v0"
+    assert body["cortex_schema_version_at_evaluation"] == "cortex_contract_v0"
     assert body["counts"]["tasks_in_window"] == 2
     assert body["counts"]["measured_execution"] == 1
     assert body["exclusions"]["retroactive"] == 1
     assert body["by_category"]["development"]["execution_multiplier_sum_ratio"] == 2.0
     assert "study" not in body["by_category"]
     assert body["invariant_violations"] == []
+
+
+def test_cortex_diagnostics_preserves_unknown_exposure_state(db, client):
+    operator = _user(db, is_operator=True)
+    start = _recent_start()
+    task = _task(operator.user_id, planned=60, executed=120, category="development", start=start)
+    db.add(task)
+    db.flush()
+    db.add(_session(task, user_id=operator.user_id))
+    record_decision(
+        db,
+        user_id=operator.user_id,
+        eligible_at=start - timedelta(minutes=5),
+        decision_status="queued",
+        exposure_category="behavioral_insight",
+        task_id=task.task_id,
+        content_template_id="cortex-unknown-test",
+    )
+    db.commit()
+
+    response = client.get(
+        "/v1/analytics/cortex/diagnostics?window_days=30",
+        headers=auth_headers(operator.user_id),
+    )
+    assert response.status_code == 200
+    body = response.json()
+
+    duration_effects = body["exposure_policy_effects"]["duration_behavior"]
+    planning_effects = body["exposure_policy_effects"]["planning_estimate"]
+    assert duration_effects["states"] == {"UNKNOWN": 1}
+    assert duration_effects["unknown_reasons"] == {"ledger_incomplete": 1}
+    assert duration_effects["policy_effect_reasons"] == {
+        "decision_without_render_or_suppression": 1
+    }
+    assert planning_effects["states"] == {"UNKNOWN": 1}

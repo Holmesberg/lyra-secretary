@@ -33,7 +33,7 @@
  * (does survey exposure correlate with retention?). Not wired in v1;
  * the survey is submission-telemetered only.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import {
@@ -45,7 +45,7 @@ import {
   submitArchetypeSurvey,
   type SurveyItem,
 } from "@/lib/archetype";
-import { queryKeys } from "@/lib/query-keys";
+import { invalidateArchetypeDependentQueries } from "@/lib/query-keys";
 
 type InstrumentSection = {
   key: "meq" | "bfi_c" | "bscs" | "gp";
@@ -97,6 +97,7 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [confirmSkip, setConfirmSkip] = useState(false);
+  const submitIdempotencyKeyRef = useRef<string | null>(null);
 
   // After a successful survey submit / skip, the user's archetype_id
   // changes — which means every bias_factor lookup needs a fresh blend
@@ -106,16 +107,7 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
   // operator asked for 2026-04-23.
   const qc = useQueryClient();
   function invalidateArchetypeDependent() {
-    qc.invalidateQueries({ queryKey: ["insights"] });
-    qc.invalidateQueries({ queryKey: queryKeys.me });
-    // Bias-factor lookups are per (category, tod, planned) — we don't
-    // know every key variant open tabs might have cached. Broad match
-    // on the first key segment so every cached lookup invalidates.
-    qc.invalidateQueries({
-      predicate: (q) =>
-        typeof q.queryKey[0] === "string" &&
-        (q.queryKey[0] as string).startsWith("bias_factor"),
-    });
+    void invalidateArchetypeDependentQueries(qc);
   }
 
   const section = SECTIONS[sectionIdx];
@@ -133,6 +125,17 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
     setAnswers((a) => ({ ...a, [itemId]: value }));
   }
 
+  function submitIdempotencyKey() {
+    if (!submitIdempotencyKeyRef.current) {
+      const random =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      submitIdempotencyKeyRef.current = `survey:${random}`;
+    }
+    return submitIdempotencyKeyRef.current;
+  }
+
   async function handleNext() {
     if (!isFinalSection) {
       setSectionIdx((i) => i + 1);
@@ -142,12 +145,15 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
     setBusy(true);
     setErr(null);
     try {
-      await submitArchetypeSurvey({
-        meq: MEQ_ITEMS.map((it) => answers[it.id]),
-        bfi_c: BFI_C_ITEMS.map((it) => answers[it.id]),
-        bscs: BSCS_ITEMS.map((it) => answers[it.id]),
-        gp: GP_ITEMS.map((it) => answers[it.id]),
-      });
+      await submitArchetypeSurvey(
+        {
+          meq: MEQ_ITEMS.map((it) => answers[it.id]),
+          bfi_c: BFI_C_ITEMS.map((it) => answers[it.id]),
+          bscs: BSCS_ITEMS.map((it) => answers[it.id]),
+          gp: GP_ITEMS.map((it) => answers[it.id]),
+        },
+        submitIdempotencyKey(),
+      );
       invalidateArchetypeDependent();
       onFinished();
     } catch (e) {
@@ -216,10 +222,10 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
               A few quick questions — about 4 minutes.
             </p>
             <p>
-              These help Barzakh start with a sense of how you tend to work
+              These help LyraOS start with a sense of how you tend to work
               — morning vs evening, how you approach things — so the
               first time estimates aren&apos;t blind guesses. After a
-              handful of sessions, Barzakh stops leaning on this and starts
+              handful of sessions, LyraOS stops leaning on this and starts
               learning from how you actually move through your day. Skip
               anytime: it just means a slower start.
             </p>
@@ -256,7 +262,7 @@ export function ArchetypeSurvey({ onFinished }: ArchetypeSurveyProps) {
         {confirmSkip && (
           <div className="mt-5 rounded-sm border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
             <p className="mb-2">
-              Skip for now? Barzakh will use a generic starting point and
+              Skip for now? LyraOS will use a generic starting point and
               learn from your sessions. You can take the survey from
               Settings whenever — no rush.
             </p>

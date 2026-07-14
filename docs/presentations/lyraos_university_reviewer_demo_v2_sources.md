@@ -7,16 +7,16 @@ This deck is intentionally reviewer-facing. It frames LyraOS as a student-owned 
 ## Slide Evidence
 
 1. Core promise: `README.md`, `docs/academic_pressure_map_contract.md`, `frontend/public/lyraos-logo.png`.
-2. Student pain: `README.md`, `docs/academic_execution_substrate.md`.
-3. Missing layer: `docs/provider_adapter_contract.md`, `docs/academic_execution_substrate.md`.
+2. Student pain: `README.md`, `docs/archive/legacy/provider_academic/academic_execution_substrate.md`.
+3. Missing layer: `docs/archive/legacy/provider_academic/provider_adapter_contract.md`, `docs/archive/legacy/provider_academic/academic_execution_substrate.md`.
 4. Student loop: `frontend/components/onboarding-flow.tsx`, `backend/app/services/task_manager.py`, `backend/app/services/academic_pressure.py`.
 5. Day-0 value: `backend/app/services/brain_dump.py`, Moodle/Calendar integration docs, pressure-map contract.
 6. Pressure map: `backend/app/services/academic_pressure.py`, `frontend/components/pulse/PulseAcademicPressureMap.tsx`.
 7. Recovery moment: stale-session/recovery docs and task/session services.
 8. Calibration prompts: `backend/app/core/output_surface_registry.json`, `docs/adaptive_scheduling_progressive_inference.md`.
 9. Insights: `frontend/app/(app)/insights/page.tsx`, `backend/app/services/claim_compiler.py`, `docs/insights-v2.png`.
-10. Build narrative: `MANIFESTO.md`, `docs/research_optionality.md`, `docs/academic_execution_substrate.md`.
-11. Baseet module: `docs/academic_execution_substrate.md`, `docs/provider_adapter_contract.md`, LyraSim roadmap.
+10. Build narrative: `MANIFESTO.md`, `docs/research_optionality.md`, `docs/archive/legacy/provider_academic/academic_execution_substrate.md`.
+11. Baseet module: `docs/archive/legacy/provider_academic/academic_execution_substrate.md`, `docs/archive/legacy/provider_academic/provider_adapter_contract.md`, LyraSim roadmap.
 12. Core engine: provider adapter contract, research contracts, README architecture sections.
 13. Evidence before claims: `docs/current_transition_state.md`, `backend/app/services/claim_compiler.py`, `backend/app/services/exposure_ledger.py`.
 14. Student-owned consequences: `docs/AUTHORITY.md`, `backend/app/core/authority.py`, pressure map contract.

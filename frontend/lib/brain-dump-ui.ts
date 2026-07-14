@@ -25,6 +25,15 @@ export function bindingKey(b: BrainDumpBindingSuggestion): string {
   );
 }
 
+export function brainDumpBindingTargetLabel(
+  binding: BrainDumpBindingSuggestion,
+  parsedDeadlineLabel: string,
+): string {
+  return binding.target_kind === "existing_deadline"
+    ? "existing obligation"
+    : parsedDeadlineLabel;
+}
+
 export function initialBindingChoices(
   nextBindings: BrainDumpBindingSuggestion[],
 ): Record<string, BrainDumpBindingChoice> {

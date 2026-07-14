@@ -25,11 +25,21 @@ SESSION='lyra-frontend'
 START_SCRIPT='/tmp/start_lyra_frontend.sh'
 FRONTEND_LOG='/tmp/frontend.log'
 PUBLIC_NEXT_DIR='.next-public'
+STAGING_NEXT_DIR=".next-public.staging.`$`$"
+PREVIOUS_NEXT_DIR='.next-public.previous'
+FAILED_NEXT_DIR=".next-public.failed.`$`$"
 
 source ~/.nvm/nvm.sh
 
 cd "`$FRONTEND_DIR"
 export NEXT_TELEMETRY_DISABLED=1
+
+SOURCE_STATUS="`$(git -C "`$FRONTEND_DIR/.." status --porcelain --untracked-files=all)"
+if [ -n "`$SOURCE_STATUS" ]; then
+  echo 'ERROR: refusing to deploy from a dirty tracked or untracked tree.' >&2
+  printf '%s\n' "`$SOURCE_STATUS" >&2
+  exit 48
+fi
 
 echo '== Lyra frontend WSL restart =='
 echo "frontend_dir=`$FRONTEND_DIR"
@@ -56,9 +66,40 @@ else
 fi
 
 if [ "`$NO_BUILD" != '1' ]; then
-  echo "== rebuilding `$PUBLIC_NEXT_DIR public topology from scratch =="
-  rm -rf "`$PUBLIC_NEXT_DIR"
-  npm run build:public
+  echo "== building public topology into staging artifact `$STAGING_NEXT_DIR =="
+  rm -rf "`$STAGING_NEXT_DIR"
+  NEXT_DIST_DIR="`$STAGING_NEXT_DIR" npm run build:public
+  POST_BUILD_SOURCE_STATUS="`$(git -C "`$FRONTEND_DIR/.." status --porcelain --untracked-files=all)"
+  if [ -n "`$POST_BUILD_SOURCE_STATUS" ]; then
+    echo 'ERROR: public build mutated tracked or untracked source files. Refusing to swap.' >&2
+    printf '%s\n' "`$POST_BUILD_SOURCE_STATUS" >&2
+    rm -rf "`$STAGING_NEXT_DIR"
+    exit 49
+  fi
+  if [ ! -s "`$STAGING_NEXT_DIR/BUILD_ID" ]; then
+    echo "ERROR: staged `$STAGING_NEXT_DIR/BUILD_ID is missing. Refusing to swap incomplete production artifact." >&2
+    rm -rf "`$STAGING_NEXT_DIR"
+    exit 42
+  fi
+
+  echo "== atomically swapping staged artifact into `$PUBLIC_NEXT_DIR =="
+  rm -rf "`$PREVIOUS_NEXT_DIR"
+  if [ -d "`$PUBLIC_NEXT_DIR" ]; then
+    mv "`$PUBLIC_NEXT_DIR" "`$PREVIOUS_NEXT_DIR"
+  fi
+  if mv "`$STAGING_NEXT_DIR" "`$PUBLIC_NEXT_DIR"; then
+    rm -rf "`$PREVIOUS_NEXT_DIR"
+  else
+    echo "ERROR: staged artifact swap failed; restoring previous public artifact." >&2
+    if [ -e "`$PUBLIC_NEXT_DIR" ]; then
+      mv "`$PUBLIC_NEXT_DIR" "`$FAILED_NEXT_DIR" || true
+    fi
+    if [ -d "`$PREVIOUS_NEXT_DIR" ]; then
+      mv "`$PREVIOUS_NEXT_DIR" "`$PUBLIC_NEXT_DIR"
+    fi
+    rm -rf "`$FAILED_NEXT_DIR"
+    exit 45
+  fi
 else
   echo "== skipping build; validating existing `$PUBLIC_NEXT_DIR =="
 fi
@@ -67,8 +108,14 @@ if [ ! -s "`$PUBLIC_NEXT_DIR/BUILD_ID" ]; then
   echo "ERROR: `$PUBLIC_NEXT_DIR/BUILD_ID is missing. Refusing to start incomplete production artifact." >&2
   exit 42
 fi
+if [ ! -s "`$PUBLIC_NEXT_DIR/LYRA_PUBLIC_BUILD_ID" ]; then
+  echo "ERROR: `$PUBLIC_NEXT_DIR/LYRA_PUBLIC_BUILD_ID is missing. Refusing to start unverifiable production artifact." >&2
+  exit 46
+fi
 
 echo "build_id=`$(cat "`$PUBLIC_NEXT_DIR/BUILD_ID")"
+EXPECTED_PUBLIC_BUILD_ID="`$(cat "`$PUBLIC_NEXT_DIR/LYRA_PUBLIC_BUILD_ID")"
+echo "public_build_id=`$EXPECTED_PUBLIC_BUILD_ID"
 
 cat > "`$START_SCRIPT" <<'EOS'
 #!/usr/bin/env bash
@@ -122,8 +169,9 @@ if [ "`$SKIP_PUBLIC_CHECK" != '1' ]; then
   echo '== public health =='
   curl -s -o /dev/null -w 'lyraos_org:%{http_code},time=%{time_total}\n' --max-time 20 https://lyraos.org/
   echo '== public topology =='
-  python3 - <<'PY'
+  EXPECTED_PUBLIC_BUILD_ID="`$EXPECTED_PUBLIC_BUILD_ID" python3 - <<'PY'
 import json
+import os
 import sys
 import urllib.request
 
@@ -145,6 +193,15 @@ for key, value in expected.items():
     if topology.get(key) != value:
         print(f"ERROR: public topology mismatch for {key}: {topology.get(key)!r}", file=sys.stderr)
         sys.exit(43)
+
+expected_build_id = os.environ["EXPECTED_PUBLIC_BUILD_ID"]
+if topology.get("build_id") != expected_build_id:
+    print(
+        "ERROR: public topology build_id mismatch: "
+        f"{topology.get('build_id')!r} != {expected_build_id!r}",
+        file=sys.stderr,
+    )
+    sys.exit(47)
 PY
 fi
 "@

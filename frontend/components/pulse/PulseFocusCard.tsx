@@ -9,8 +9,9 @@
  * compactly. The previous A1 ship hid the timer in idle and let the
  * picker dominate the card; that wasn't the vibe.
  *
- * Operator-narrowed action set still applies (no Switch button and no
- * pause-reason picker). The interactivity from the
+ * Operator-narrowed action set still applies (no Switch button). Pause uses
+ * the canonical reason vocabulary so route choice cannot silently alter
+ * measurement truth. The interactivity from the
  * inline shipped as A1 stays — just visually subordinated to the
  * timer-as-hero composition.
  *
@@ -36,30 +37,31 @@
  *      now resets mode→'idle' when status flips inactive while in
  *      reflection AND no in-flight stop mutation.
  */
-import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Pause, Play, Square } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, Loader2, Pause, Play, RefreshCw, Square } from "lucide-react";
+import { Toast } from "@/components/toast";
 import {
   getStopwatchStatus,
-  pauseStopwatch,
-  resumeStopwatch,
-  startStopwatch,
-  stopStopwatch,
   type ScopeOutcome,
-  type StartStopwatchResponse,
-  type StopResponse,
   type StopwatchStatus,
   type TaskRow,
 } from "@/lib/tasks";
 import { RadialFocusTimer } from "@/components/pulse/RadialFocusTimer";
-import { announceUndoAvailable } from "@/lib/undo";
-import { invalidateTimerCommandSurfaces, queryKeys } from "@/lib/query-keys";
-import { QUICK_PAUSE_REASON } from "@/lib/stopwatch-pause-reasons";
-
-type Mode = "idle" | "reflection" | "next-prompt";
+import { queryKeys } from "@/lib/query-keys";
+import type { StopwatchStopOutputToast } from "@/lib/stopwatch-stop-outputs";
+import { PAUSE_REASON_OPTIONS } from "@/lib/stopwatch-pause-reasons";
+import {
+  usePulseFocusStopwatchCommands,
+  type PulseFocusMode,
+} from "@/lib/hooks/use-pulse-focus-stopwatch-commands";
 
 export interface PulseFocusCardProps {
   todaysTasks: TaskRow[];
+}
+
+interface PulseToastEntry extends StopwatchStopOutputToast {
+  id: string;
 }
 
 function fmtTime(iso: string | null | undefined): string {
@@ -88,7 +90,6 @@ const SCOPE_OPTIONS: { value: ScopeOutcome; label: string }[] = [
 ];
 
 export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
-  const qc = useQueryClient();
   const statusQ = useQuery<StopwatchStatus>({
     queryKey: queryKeys.stopwatchStatus,
     queryFn: getStopwatchStatus,
@@ -100,7 +101,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const isActive = !!status?.active;
   const isPaused = !!status?.paused;
 
-  const [mode, setMode] = useState<Mode>("idle");
+  const [mode, setMode] = useState<PulseFocusMode>("idle");
   // Typed flag for the early-stop confirmation gate. Replaces the
   // fragile `errorMsg.includes("early")` heuristic in A1's first cut.
   const [requiresConfirm, setRequiresConfirm] = useState(false);
@@ -129,16 +130,53 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
   const [stoppedSummary, setStoppedSummary] = useState<{
     minutes: number;
     delta: number | null;
+    skipped: boolean;
+    notice: string | null;
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  const [showPauseReasons, setShowPauseReasons] = useState(false);
+  const [toasts, setToasts] = useState<PulseToastEntry[]>([]);
   const lastStoppedTaskIdRef = useRef<string | null>(null);
 
-  const refreshTimerSurfaces = () => {
-    void invalidateTimerCommandSurfaces(qc);
-  };
+  const removeToast = useCallback((id: string) => {
+    setToasts((previous) => previous.filter((toast) => toast.id !== id));
+  }, []);
+
+  const pushToast = useCallback((
+    message: string,
+    viewId: string | null,
+    lifespan: "auto" | "pin",
+    detailHref = "/insights",
+    exposureId: string | null = null,
+    surfaceId: string | null = null,
+  ) => {
+    if (
+      surfaceId !== "stopwatch.micro_mirror"
+      && surfaceId !== "stopwatch.calibration_nudge"
+    ) {
+      return;
+    }
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setToasts((previous) => [
+      ...previous,
+      {
+        id,
+        message,
+        viewId,
+        lifespan,
+        detailHref,
+        exposureId,
+        surfaceId,
+      },
+    ]);
+  }, []);
 
   function beginReflection() {
+    setShowPauseReasons(false);
     setCompletionPct("");
     setScopeOutcome(null);
     setMode("reflection");
@@ -151,11 +189,26 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     return Math.max(0, Math.min(100, Math.round(parsed)));
   }
 
+  const { startM, pauseM, resumeM, stopM, stopPendingRef } =
+    usePulseFocusStopwatchCommands({
+      setMode,
+      setRequiresConfirm,
+      setReadiness,
+      setReflection,
+      setCompletionPct,
+      setScopeOutcome,
+      setStoppedSummary,
+      setErrorMsg,
+      setInfoMsg,
+      pushToast,
+      lastStoppedTaskIdRef,
+    });
+
   // Bug fix #2 (ultrathink): if status flips inactive while we're
   // in reflection mode (e.g. another tab stopped the session), reset
   // local mode so Finish doesn't 4xx on a non-existent session.
   useEffect(() => {
-    if (mode === "reflection" && !isActive && !stopM_isPendingRef.current) {
+    if (mode === "reflection" && !isActive && !stopPendingRef.current) {
       setMode("idle");
       setRequiresConfirm(false);
       setErrorMsg(null);
@@ -163,108 +216,18 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, mode]);
 
-  // Mutations
-  const startM = useMutation<StartStopwatchResponse, Error, { taskId: string; readiness: number }>({
-    mutationFn: ({ taskId, readiness }) => startStopwatch(taskId, readiness),
-    onSuccess: (res) => {
-      setMode("idle");
-      setErrorMsg(null);
-      setReadiness(3);
-      announceUndoAvailable("Timer started.");
-      if (res.is_future_task && res.planned_start) {
-        try {
-          const planned = new Date(res.planned_start);
-          const minutesEarly = Math.max(
-            0,
-            Math.round((planned.getTime() - Date.now()) / 60000)
-          );
-          const timeLabel = planned.toLocaleTimeString([], {
-            hour: "numeric",
-            minute: "2-digit",
-          });
-          const msg = `Heads up: this was scheduled for ${timeLabel}; you started ${minutesEarly} min early. The session will record from now.`;
-          setInfoMsg(msg);
-          setTimeout(() => {
-            setInfoMsg((prev) => (prev === msg ? null : prev));
-          }, 5000);
-        } catch {
-          setInfoMsg(
-            "Heads up: this was scheduled later. The session will record from now."
-          );
-        }
-      } else {
-        setInfoMsg(null);
-      }
-      refreshTimerSurfaces();
-    },
-    onError: (e) => setErrorMsg(e.message ?? "Failed to start"),
-  });
-
-  const pauseM = useMutation<unknown, Error, void>({
-    mutationFn: () => pauseStopwatch(QUICK_PAUSE_REASON),
-    onSuccess: () => refreshTimerSurfaces(),
-    onError: (e) => setErrorMsg(e.message ?? "Failed to pause"),
-  });
-
-  const resumeM = useMutation<unknown, Error, void>({
-    mutationFn: () => resumeStopwatch(),
-    onSuccess: () => refreshTimerSurfaces(),
-    onError: (e) => setErrorMsg(e.message ?? "Failed to resume"),
-  });
-
-  const stopM = useMutation<
-    StopResponse,
-    Error,
-    {
-      reflection: number;
-      confirmed?: boolean;
-      completionPct?: number;
-      scopeOutcome?: ScopeOutcome;
-    }
-  >({
-    mutationFn: ({ reflection, confirmed, completionPct, scopeOutcome }) =>
-      stopStopwatch(reflection, {
-        confirmed,
-        task_completion_percentage: completionPct,
-        scope_outcome: scopeOutcome,
-      }),
-    onSuccess: (res) => {
-      if (res.requires_confirmation) {
-        // Bug fix #1 (ultrathink): typed flag, not string match.
-        setRequiresConfirm(true);
-        setErrorMsg(res.confirmation_message ?? "Stopping early — finish anyway?");
-        return;
-      }
-      lastStoppedTaskIdRef.current = res.task_id;
-      setStoppedSummary({
-        minutes: Math.round(res.duration_minutes),
-        delta: res.delta_minutes ?? null,
-      });
-      setMode("next-prompt");
-      setRequiresConfirm(false);
-      setErrorMsg(null);
-      setInfoMsg(null);
-      setReflection(null);
-      setCompletionPct("");
-      setScopeOutcome(null);
-      refreshTimerSurfaces();
-    },
-    onError: (e) => setErrorMsg(e.message ?? "Failed to stop"),
-  });
-
-  // Pending-ref so the orphan-reflection useEffect can read the latest
-  // mutation state without re-subscribing every render.
-  const stopM_isPendingRef = useRef(stopM.isPending);
-  useEffect(() => {
-    stopM_isPendingRef.current = stopM.isPending;
-  }, [stopM.isPending]);
-
   // Render branches
   const showRunning = isActive && !isPaused && mode !== "reflection";
   const showPaused = isActive && isPaused && mode !== "reflection";
   const showReflection = mode === "reflection" || (stopM.isPending && isActive);
   const showNextPrompt = mode === "next-prompt" && !isActive;
   const showIdle = !isActive && mode === "idle";
+
+  useEffect(() => {
+    if (!showRunning) {
+      setShowPauseReasons(false);
+    }
+  }, [showRunning]);
 
   // Eyebrow copy
   const eyebrow = showRunning
@@ -274,7 +237,9 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
       : showReflection
         ? "How was it?"
         : showNextPrompt
-          ? "Session complete"
+          ? stoppedSummary?.skipped
+            ? "Session not recorded"
+            : "Session complete"
           : "Current focus session";
 
   // Title above timer
@@ -282,13 +247,46 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
     showRunning || showPaused || showReflection
       ? status?.task_title ?? null
       : showNextPrompt
-        ? "Start the next one?"
+        ? stoppedSummary?.skipped
+          ? "Choose what to do next"
+          : "Start the next one?"
         : plannedTasks.length > 0
           ? "Ready when you are"
           : "Ready when you are";
 
+  if (statusQ.isError) {
+    return (
+      <div
+        data-testid="pulse-focus-status-unavailable"
+        role="status"
+        className="terminal-panel flex min-h-[320px] flex-col items-center justify-center gap-4 px-6 py-8 text-center"
+      >
+        <AlertTriangle className="h-6 w-6 text-ember" aria-hidden />
+        <div>
+          <div className="font-display text-[10px] uppercase tracking-macro text-ember">
+            [ Focus unavailable ]
+          </div>
+          <p className="mt-2 max-w-xs text-sm text-parchment">
+            The live timer did not load, so Pulse will not guess its state.
+          </p>
+        </div>
+        <button
+          data-testid="pulse-focus-status-retry"
+          type="button"
+          onClick={() => void statusQ.refetch()}
+          disabled={statusQ.isFetching}
+          className="inline-flex min-h-[40px] items-center justify-center gap-2 border border-ember/40 px-3 font-mono text-[10px] uppercase tracking-widest text-ember transition-colors hover:bg-ember/10 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${statusQ.isFetching ? "animate-spin" : ""}`} />
+          Retry timer
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div
+    <>
+      <div
       data-testid="pulse-focus-card"
       className="terminal-panel relative flex flex-col items-center overflow-hidden px-5 py-6 sm:px-6 sm:py-7"
     >
@@ -377,7 +375,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               step={1}
               value={readiness}
               onChange={(e) => setReadiness(Number(e.target.value))}
-              className="barzakh-range h-2 flex-1"
+              className="lyraos-range h-2 flex-1"
               aria-label="Pre-task readiness 1 to 5"
             />
             <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal min-w-[52px] text-right">
@@ -414,30 +412,63 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
 
       {/* RUNNING — Pause + Stop */}
       {showRunning && (
-        <div className="mt-5 flex w-full max-w-md items-center justify-center gap-3 px-1">
-          <button
-            data-testid="focus-pause"
-            type="button"
-            onClick={() => pauseM.mutate()}
-            disabled={pauseM.isPending}
-            className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-hairline bg-void-2/40 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-dust transition-colors hover:border-ember/40 hover:text-ember disabled:opacity-50"
-          >
-            {pauseM.isPending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Pause className="h-3.5 w-3.5" />
-            )}
-            Pause
-          </button>
-          <button
-            data-testid="focus-stop"
-            type="button"
-            onClick={beginReflection}
-            className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon"
-          >
-            <Square className="h-3.5 w-3.5" />
-            Stop
-          </button>
+        <div className="mt-5 flex w-full max-w-md flex-col gap-3 px-1">
+          <div className="flex items-center justify-center gap-3">
+            <button
+              data-testid="focus-pause"
+              type="button"
+              onClick={() => setShowPauseReasons((visible) => !visible)}
+              disabled={pauseM.isPending}
+              aria-expanded={showPauseReasons}
+              aria-controls="focus-pause-reasons"
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-hairline bg-void-2/40 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-dust transition-colors hover:border-ember/40 hover:text-ember disabled:opacity-50"
+            >
+              {pauseM.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Pause className="h-3.5 w-3.5" />
+              )}
+              Pause
+            </button>
+            <button
+              data-testid="focus-stop"
+              type="button"
+              onClick={beginReflection}
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-sm border border-signal/40 bg-signal/15 px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-signal transition-colors hover:bg-signal/25 hover:text-signal-neon"
+            >
+              <Square className="h-3.5 w-3.5" />
+              Stop
+            </button>
+          </div>
+          {showPauseReasons && (
+            <div
+              id="focus-pause-reasons"
+              data-testid="focus-pause-reasons"
+              className="rounded-sm border border-hairline bg-void/45 p-2"
+            >
+              <div className="mb-2 font-display text-[9px] uppercase tracking-macro text-dust-deep">
+                Why are you pausing?
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {PAUSE_REASON_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    data-testid={`focus-pause-reason-${option.value}`}
+                    type="button"
+                    onClick={() =>
+                      pauseM.mutate(option.value, {
+                        onSuccess: () => setShowPauseReasons(false),
+                      })
+                    }
+                    disabled={pauseM.isPending}
+                    className="min-h-[40px] rounded-sm border border-hairline px-3 py-2 text-left text-xs text-parchment transition-colors hover:border-ember/45 hover:bg-ember/5 hover:text-ember disabled:opacity-50"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -484,7 +515,7 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
               step={1}
               value={reflection ?? 3}
               onChange={(e) => setReflection(Number(e.target.value))}
-              className="barzakh-range h-2 flex-1"
+              className="lyraos-range h-2 flex-1"
               aria-label="Post-task reflection 1 to 5"
             />
             <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-signal min-w-[52px] text-right">
@@ -584,26 +615,45 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
         <div className="my-2 flex w-full max-w-md flex-col items-center gap-4 px-1">
           {stoppedSummary && (
             <div className="flex flex-col items-center gap-1 text-center">
-              <div className="flex items-baseline gap-2">
-                <span className="font-display text-5xl font-semibold tabular-nums neon-cyan">
-                  {stoppedSummary.minutes}
-                  <span className="text-xl text-signal/85">m</span>
-                </span>
-              </div>
-              <div className="font-display text-[10px] uppercase tracking-macro text-dust">
-                <span className="opacity-50">[ </span>
-                Protected focus
-                <span className="opacity-50"> ]</span>
-              </div>
-              {stoppedSummary.delta !== null && (
-                <div
-                  className={`font-mono text-[10px] uppercase tracking-widest ${
-                    stoppedSummary.delta <= 0 ? "text-signal" : "text-ember"
-                  }`}
-                >
-                  {stoppedSummary.delta > 0 ? "+" : ""}
-                  {stoppedSummary.delta}m vs plan
-                </div>
+              {stoppedSummary.skipped ? (
+                <>
+                  <AlertTriangle className="mb-1 h-6 w-6 text-ember" aria-hidden />
+                  <div
+                    data-testid="pulse-stop-skipped-result"
+                    className="font-display text-[11px] uppercase tracking-macro text-ember"
+                  >
+                    <span className="opacity-50">[ </span>
+                    Too short to record
+                    <span className="opacity-50"> ]</span>
+                  </div>
+                  <p className="max-w-sm text-xs leading-relaxed text-dust">
+                    {stoppedSummary.notice}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-display text-5xl font-semibold tabular-nums neon-cyan">
+                      {stoppedSummary.minutes}
+                      <span className="text-xl text-signal/85">m</span>
+                    </span>
+                  </div>
+                  <div className="font-display text-[10px] uppercase tracking-macro text-dust">
+                    <span className="opacity-50">[ </span>
+                    Protected focus
+                    <span className="opacity-50"> ]</span>
+                  </div>
+                  {stoppedSummary.delta !== null && (
+                    <div
+                      className={`font-mono text-[10px] uppercase tracking-widest ${
+                        stoppedSummary.delta <= 0 ? "text-signal" : "text-ember"
+                      }`}
+                    >
+                      {stoppedSummary.delta > 0 ? "+" : ""}
+                      {stoppedSummary.delta}m vs plan
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -685,6 +735,22 @@ export function PulseFocusCard({ todaysTasks }: PulseFocusCardProps) {
           {infoMsg} <span className="text-signal/60">· tap to dismiss</span>
         </button>
       )}
-    </div>
+      </div>
+      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            id={toast.id}
+            message={toast.message}
+            viewId={toast.viewId}
+            exposureId={toast.exposureId}
+            surfaceId={toast.surfaceId}
+            lifespan={toast.lifespan}
+            detailHref={toast.detailHref}
+            onDismiss={removeToast}
+          />
+        ))}
+      </div>
+    </>
   );
 }

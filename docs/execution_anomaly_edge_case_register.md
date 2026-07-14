@@ -298,7 +298,7 @@ document -> monitor -> rerun after real pressure
 - `docs/lyrasim_pressure_ambiguity_roadmap.md`
 - `docs/lyrasim_stress_harness.md`
 - `docs/stale_session_recovery_policy.md`
-- `docs/provider_adapter_contract.md`
+- `docs/archive/legacy/provider_academic/provider_adapter_contract.md`
 - `docs/academic_pressure_map_contract.md`
 - `docs/brain_dump_onboarding_design.md`
 - `docs/dogfood_findings_living.md`

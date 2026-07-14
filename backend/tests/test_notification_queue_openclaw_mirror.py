@@ -1,5 +1,7 @@
 """OpenClaw operator mirror for user notification queue events."""
+from concurrent.futures import ThreadPoolExecutor
 import json
+from threading import Barrier, Lock
 from uuid import uuid4
 
 from app.db.models import (
@@ -8,7 +10,7 @@ from app.db.models import (
     NotificationLifecycleEvent,
     User,
 )
-from app.services import notification_queue
+from app.services import notification_lifecycle, notification_queue
 from app.services.output_surfaces import create_output_surface_decision
 from tests.conftest import auth_headers
 
@@ -197,6 +199,17 @@ def test_web_channel_preserves_operator_alerts_for_openclaw(monkeypatch):
         def delete(self, _key):
             self.items = []
 
+        def lrem(self, _key, count, value):
+            removed = 0
+            kept = []
+            for item in self.items:
+                if item == value and (count == 0 or removed < count):
+                    removed += 1
+                else:
+                    kept.append(item)
+            self.items = kept
+            return removed
+
         def rpush(self, key, value):
             self.rpushed.append((key, value))
             self.items.append(value)
@@ -310,10 +323,67 @@ class _LifecycleRedis:
     def delete(self, _key):
         self.items = []
 
+    def lrem(self, _key, count, value):
+        removed = 0
+        kept = []
+        for item in self.items:
+            if item == value and (count == 0 or removed < count):
+                removed += 1
+            else:
+                kept.append(item)
+        self.items = kept
+        return removed
+
 
 class _LifecycleRedisClient:
     def __init__(self, redis):
         self.client = redis
+
+
+def test_concurrent_terminal_acks_do_not_resurrect_sibling(monkeypatch):
+    class ConcurrentRedis(_LifecycleRedis):
+        def __init__(self):
+            super().__init__()
+            self.read_barrier = Barrier(2)
+            self.lock = Lock()
+
+        def lrange(self, _key, _start, _end):
+            with self.lock:
+                snapshot = list(self.items)
+            self.read_barrier.wait(timeout=2)
+            return snapshot
+
+        def lrem(self, _key, count, value):
+            with self.lock:
+                return super().lrem(_key, count, value)
+
+    redis = ConcurrentRedis()
+    payloads = [
+        {"notification_id": "rendered-id", "type": "resume_prediction"},
+        {"notification_id": "lost-id", "type": "resume_prediction"},
+    ]
+    for payload in payloads:
+        redis.rpush("notifications:pending:7", json.dumps(payload, sort_keys=True))
+
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: _LifecycleRedisClient(redis),
+    )
+
+    def acknowledge(notification_id, event_type):
+        return notification_queue.ack_user_notifications(
+            7,
+            [notification_id],
+            event_type=event_type,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        rendered = pool.submit(acknowledge, "rendered-id", "rendered")
+        lost = pool.submit(acknowledge, "lost-id", "lost_unrendered")
+        assert sorted([rendered.result(), lost.result()]) == [1, 1]
+
+    assert redis.items == []
 
 
 def test_web_pending_reserves_and_render_ack_marks_only_rendered(db, monkeypatch):
@@ -358,6 +428,151 @@ def test_web_pending_reserves_and_render_ack_marks_only_rendered(db, monkeypatch
     assert lifecycle.rendered_at is not None
     assert lifecycle.lost_unrendered_at is None
     assert redis.items == []
+
+
+def test_supersede_prediction_is_scoped_and_preserves_rendered_history(db, monkeypatch):
+    redis = _LifecycleRedis()
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: _LifecycleRedisClient(redis),
+    )
+    user = User(email=f"notification-supersede-{uuid4()}@example.test")
+    other_user = User(email=f"notification-supersede-other-{uuid4()}@example.test")
+    db.add_all([user, other_user])
+    db.commit()
+
+    payloads = [
+        {
+            "notification_id": "pause-target",
+            "type": "pause_prediction",
+            "session_id": "session-a",
+            "message": "Pause now?",
+        },
+        {
+            "notification_id": "pause-rendered",
+            "type": "pause_prediction",
+            "session_id": "session-a",
+            "message": "Pause now?",
+        },
+        {
+            "notification_id": "resume-other-family",
+            "type": "resume_prediction",
+            "session_id": "session-a",
+            "message": "Resume now?",
+        },
+        {
+            "notification_id": "pause-other-session",
+            "type": "pause_prediction",
+            "session_id": "session-b",
+            "message": "Pause now?",
+        },
+    ]
+    for payload in payloads:
+        notification_queue.enqueue_user_notification(user.user_id, payload, db=db)
+    notification_lifecycle.ensure_notification_queued(
+        db,
+        user_id=other_user.user_id,
+        payload={
+            "notification_id": "pause-other-user",
+            "type": "pause_prediction",
+            "session_id": "session-a",
+            "message": "Pause now?",
+        },
+    )
+    db.commit()
+
+    pending = notification_queue.peek_user_notifications(user.user_id, db=db)
+    assert {row["notification_id"] for row in pending} == {
+        payload["notification_id"] for payload in payloads
+    }
+    assert notification_queue.ack_user_notifications(
+        user.user_id,
+        ["pause-rendered"],
+        db=db,
+        event_type="rendered",
+    ) == 1
+    db.commit()
+
+    superseded_ids = notification_lifecycle.supersede_pending_prediction_notifications(
+        db,
+        user_id=user.user_id,
+        session_id="session-a",
+        notification_types=("pause_prediction",),
+    )
+    db.commit()
+    assert superseded_ids == ["pause-target"]
+    assert notification_queue.remove_user_notifications(
+        user.user_id,
+        superseded_ids,
+    ) == 1
+
+    statuses = {
+        row.notification_id: row.status
+        for row in db.query(NotificationLifecycleEvent)
+        .filter(NotificationLifecycleEvent.notification_id.in_({
+            "pause-target",
+            "pause-rendered",
+            "resume-other-family",
+            "pause-other-session",
+            "pause-other-user",
+        }))
+        .all()
+    }
+    assert statuses == {
+        "pause-target": "superseded",
+        "pause-rendered": "rendered",
+        "resume-other-family": "reserved",
+        "pause-other-session": "reserved",
+        "pause-other-user": "queued",
+    }
+    assert {
+        json.loads(raw)["notification_id"] for raw in redis.items
+    } == {"resume-other-family", "pause-other-session"}
+
+
+def test_superseded_notification_fails_closed_when_redis_prune_fails(db, monkeypatch):
+    class FailingPruneRedis(_LifecycleRedis):
+        def lrem(self, _key, _count, _value):
+            raise ConnectionError("injected lrem failure")
+
+    redis = FailingPruneRedis()
+    monkeypatch.setattr(
+        notification_queue,
+        "RedisClient",
+        lambda: _LifecycleRedisClient(redis),
+    )
+    user = User(email=f"notification-supersede-fail-{uuid4()}@example.test")
+    db.add(user)
+    db.commit()
+    notification_queue.enqueue_user_notification(
+        user.user_id,
+        {
+            "notification_id": "stale-prediction",
+            "type": "pause_prediction",
+            "session_id": "stale-session",
+            "message": "Pause now?",
+        },
+        db=db,
+    )
+    db.commit()
+    notification_lifecycle.supersede_pending_prediction_notifications(
+        db,
+        user_id=user.user_id,
+        session_id="stale-session",
+        notification_types=("pause_prediction",),
+    )
+    db.commit()
+
+    assert notification_queue.peek_user_notifications(user.user_id, db=db) == []
+    lifecycle = (
+        db.query(NotificationLifecycleEvent)
+        .filter(NotificationLifecycleEvent.notification_id == "stale-prediction")
+        .one()
+    )
+    assert lifecycle.status == "superseded"
+    assert lifecycle.rendered_at is None
+    assert len(redis.items) == 1
 
 
 def test_notification_lifecycle_bounds_legacy_overlong_ids(db, monkeypatch):

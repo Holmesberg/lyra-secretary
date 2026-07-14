@@ -7,7 +7,8 @@ param(
   [switch]$SkipBrowser,
   [switch]$IncludeMutable,
   [switch]$AllowPublicFrontendArtifactMutation,
-  [int]$LocalCurrentPort = 3013
+  [int]$LocalCurrentPort = 3013,
+  [switch]$SelfTestNativeGate
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,9 +36,12 @@ function Invoke-Step {
   Write-Host ""
   Write-Host "==> $Name"
   $started = Get-Date
+  $global:LASTEXITCODE = 0
   & $Body
-  if ($LASTEXITCODE -ne 0) {
-    throw "$Name failed with exit code $LASTEXITCODE"
+  $stepSucceeded = $?
+  $stepExitCode = $global:LASTEXITCODE
+  if (-not $stepSucceeded) {
+    throw "$Name failed with exit code $stepExitCode"
   }
   $durationMs = [int]((Get-Date) - $started).TotalMilliseconds
   $summary.Add([pscustomobject]@{
@@ -46,10 +50,55 @@ function Invoke-Step {
   }) | Out-Null
 }
 
+function Invoke-NativeGate {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Name,
+    [Parameter(Mandatory = $true)]
+    [scriptblock]$Body
+  )
+
+  $global:LASTEXITCODE = 0
+  & $Body
+  $succeeded = $?
+  $exitCode = $global:LASTEXITCODE
+  if (-not $succeeded -or $exitCode -ne 0) {
+    throw "$Name failed with exit code $exitCode"
+  }
+}
+
+if ($SelfTestNativeGate) {
+  $caught = $false
+  try {
+    Invoke-NativeGate "injected early failure" {
+      powershell -NoProfile -Command "exit 7"
+    }
+    powershell -NoProfile -Command "exit 0"
+  } catch {
+    $caught = $_.Exception.Message -eq "injected early failure failed with exit code 7"
+  }
+  if (-not $caught) {
+    throw "S1c native gate did not fail closed on an injected early failure."
+  }
+  [pscustomobject]@{
+    ok = $true
+    classification = "s1c_native_gate_negative_proof"
+  } | ConvertTo-Json
+  exit 0
+}
+
 Push-Location $repoRoot
 try {
+  Invoke-Step "S1c native-command failure contract" {
+    powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -SelfTestNativeGate
+  }
+
   Invoke-Step "git diff check" {
     git diff --check
+  }
+
+  Invoke-Step "runtime topology contract gate" {
+    node scripts\test_runtime_topology_contract.mjs
   }
 
   Invoke-Step "authority surface scan" {
@@ -57,12 +106,92 @@ try {
   }
 
   Invoke-Step "static refactor contract scan" {
-    & $python -m py_compile scripts\scan_refactor_contracts.py
-    & $python scripts\scan_refactor_contracts.py --fail-on-errors
+    Invoke-NativeGate "static refactor contract compile" {
+      & $python -m py_compile scripts\scan_refactor_contracts.py
+    }
+    Invoke-NativeGate "static refactor contract scan" {
+      & $python scripts\scan_refactor_contracts.py --fail-on-errors
+    }
+  }
+
+  Invoke-Step "backend layer import gate" {
+    Invoke-NativeGate "backend layer import compile" {
+      & $python -m py_compile scripts\scan_backend_layer_imports.py
+    }
+    Invoke-NativeGate "backend layer import self-test" {
+      & $python scripts\scan_backend_layer_imports.py --self-test
+    }
+    Invoke-NativeGate "backend layer import scan" {
+      & $python scripts\scan_backend_layer_imports.py --fail-on-errors
+    }
+  }
+
+  Invoke-Step "Cortex read-only gate" {
+    Invoke-NativeGate "Cortex read-only compile" {
+      & $python -m py_compile scripts\scan_cortex_readonly.py
+    }
+    Invoke-NativeGate "Cortex read-only self-test" {
+      & $python scripts\scan_cortex_readonly.py --self-test
+    }
+    Invoke-NativeGate "Cortex read-only scan" {
+      & $python scripts\scan_cortex_readonly.py --fail-on-errors
+    }
+  }
+
+  Invoke-Step "shipped feature preservation registry gate" {
+    Invoke-NativeGate "feature preservation registry compile" {
+      & $python -m py_compile scripts\scan_feature_preservation_registry.py
+    }
+    Invoke-NativeGate "feature preservation registry self-test" {
+      & $python scripts\scan_feature_preservation_registry.py --self-test
+    }
+    Invoke-NativeGate "feature preservation registry scan" {
+      & $python scripts\scan_feature_preservation_registry.py --fail-on-errors
+    }
+  }
+
+  Invoke-Step "onboarding Brain Dump recovery contract gate" {
+    node scripts\test_onboarding_brain_dump_recovery_contract.mjs
+  }
+
+  Invoke-Step "onboarding skip durability contract gate" {
+    node scripts\test_onboarding_skip_contract.mjs
+  }
+
+  Invoke-Step "product-loop account preflight contract gate" {
+    node scripts\test_product_loop_account_preflight_contract.mjs
+  }
+
+  Invoke-Step "operator account preflight contract gate" {
+    node scripts\test_operator_account_preflight_contract.mjs
+  }
+
+  Invoke-Step "proof preflight negative contract gate" {
+    node scripts\proof_preflight.mjs --self-test
+  }
+
+  Invoke-Step "notification lifecycle topology trust gate" {
+    node scripts\browser_notification_lifecycle_dogfood.mjs --self-test
+  }
+
+  Invoke-Step "Pressure Map planning provenance contract gate" {
+    node scripts\test_pressure_map_planning_provenance_contract.mjs
+  }
+
+  Invoke-Step "Today task-row mobile contract gate" {
+    node scripts\test_today_task_row_mobile_contract.mjs
+  }
+
+  Invoke-Step "Today void-settlement contract gate" {
+    node scripts\test_today_void_settlement_contract.mjs
   }
 
   Invoke-Step "OpenClaw operator relay hermetic test" {
     node scripts\test_openclaw_operator_relay.mjs
+  }
+
+  Invoke-Step "public backend isolation contract gate" {
+    node scripts\test_public_backend_isolation_contract.mjs
   }
 
   Invoke-Step "alembic fresh database smoke" {

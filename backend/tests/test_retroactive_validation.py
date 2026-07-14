@@ -4,7 +4,10 @@ The validation block runs before any DB call, so only the shared test DB
 from conftest.py is needed.
 """
 from fastapi.testclient import TestClient
+from uuid import uuid4
 from app.main import app
+from app.db.models import Task, User
+from tests.conftest import auth_headers
 
 client = TestClient(app, raise_server_exceptions=False)
 
@@ -71,3 +74,43 @@ def test_unplanned_reason_options_present():
     unplanned = next(f for f in missing if f["field"] == "unplanned_reason")
     assert "options" in unplanned
     assert unplanned["options"]["1"] == "unexpected_task"
+
+
+def test_retroactive_planned_duration_does_not_override_explicit_end_time(client, db):
+    user = User(
+        email=f"retroactive-explicit-end-{uuid4().hex[:8]}@example.test",
+        google_id=None,
+        timezone="Africa/Cairo",
+        is_operator=False,
+        notion_enabled=False,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    r = client.post(
+        "/v1/stopwatch/retroactive",
+        json={
+            "title": "Debugging",
+            "start_time": "2026-04-07T14:37:00",
+            "end_time": "2026-04-07T16:00:00",
+            "post_task_reflection": 4,
+            "total_paused_minutes": 0,
+            "unplanned_reason": "forgot_to_log",
+            "planned_duration_minutes": 54,
+        },
+        headers=auth_headers(user.user_id),
+    )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["duration_minutes"] == 83
+    assert body["planned_duration_minutes"] == 54
+    assert body["delta_minutes"] == -29
+    assert body["end_time"].startswith("2026-04-07T16:00:00")
+
+    task = db.query(Task).filter(Task.task_id == body["task_id"]).one()
+    assert task.executed_duration_minutes == 83
+    assert task.executed_end_utc is not None
+    assert task.planned_duration_minutes == 54
+    assert task.planned_end_utc != task.executed_end_utc

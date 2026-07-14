@@ -24,6 +24,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { CATEGORIES } from "@/lib/categories";
+import { queryKeys } from "@/lib/query-keys";
 import { getUserCategories } from "@/lib/tasks";
 
 interface Props {
@@ -35,7 +36,7 @@ interface Props {
 
 export function CategorySelect({ value, onChange, id = "category", className }: Props) {
   const categoriesQ = useQuery({
-    queryKey: ["user-categories"],
+    queryKey: queryKeys.userCategories,
     queryFn: getUserCategories,
     staleTime: 60_000,
   });

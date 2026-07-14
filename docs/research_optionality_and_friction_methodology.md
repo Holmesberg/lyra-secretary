@@ -283,7 +283,7 @@ Two scalability risks should be handled before further provider expansion or
 adaptive-message experiments:
 
 1. Provider adapter normalization:
-   - governed by `docs/provider_adapter_contract.md`;
+   - governed by `docs/archive/legacy/provider_academic/provider_adapter_contract.md`;
    - prevents Baseet/Moodle/Calendar/Jira dialects from leaking into Cortex.
 
 2. Drift rollup scalability:

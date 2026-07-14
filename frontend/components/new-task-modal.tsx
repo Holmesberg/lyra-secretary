@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,38 +11,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CATEGORIES } from "@/lib/categories";
 import { useCurrentTime } from "@/lib/hooks/use-current-time";
 import {
   rescheduleTask,
-  lookupBiasFactor,
   type TaskRow,
-  type BiasLookupResponse,
 } from "@/lib/tasks";
-import {
-  addMinutes,
-  defaultStart,
-  defaultStartForDate,
-  diffMinutes,
-  formatLocal,
-  roundTo5,
-  suggestAmPmSwap as getAmPmSwapSuggestion,
-  suggestPushStartToFuture as getPushStartToFutureSuggestion,
-  timeOfDay,
-} from "@/lib/task-time";
-import { ackExposureRender, ackExposureSuppression } from "@/lib/api";
-import {
-  previewDeadlineBinding,
-  type DeadlinePreviewResponse,
-} from "@/lib/deadlines";
+import { useNewTaskTimeControls } from "@/lib/hooks/use-new-task-time-controls";
+import { useNewTaskCategoryControls } from "@/lib/hooks/use-new-task-category-controls";
+import { useNewTaskDescriptionControls } from "@/lib/hooks/use-new-task-description-controls";
 import { CategorySelect } from "@/components/category-select";
 import { DeadlinePickerSlot } from "@/components/deadline-picker-slot";
 import {
-  CalibrationNudgeCard,
-  type CalibrationNudge,
-} from "@/components/calibration-nudge-card";
+  NewTaskPausedConflictPanel,
+  NewTaskSoftConflictPanel,
+} from "@/components/new-task-conflict-panels";
+import { CalibrationNudgeCard } from "@/components/calibration-nudge-card";
 import {
-  localResearchNudge,
   nudgeDecisionFromCalibration,
   type NudgeDecisionData,
 } from "@/lib/creation-nudge";
@@ -52,98 +36,9 @@ import {
   type PausedConflict,
   type SoftConflict,
 } from "@/components/use-new-task-submit-controller";
-
-const BIAS_LOOKUP_DEBOUNCE_MS = 120;
-const pendingCreationNudgeRenderAcks = new Set<string>();
-const ackedCreationNudgeRenders = new Set<string>();
-const pendingCreationNudgeSuppressions = new Set<string>();
-const suppressedCreationNudgeExposures = new Set<string>();
-const CREATION_NUDGE_RENDER_ACK_RETRY_MS = [250, 750, 1500, 3000, 6000];
-const CREATION_NUDGE_SUPPRESSION_RETRY_MS = [500, 1500, 3000];
-const CREATION_NUDGE_EXPOSURE_TTL_MS = 30_000;
-const creationNudgeExposureIds = new Map<string, { exposureId: string; expiresAt: number }>();
-
-function newExposureId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function exposureIdForCreationNudge(category: string, tod: string, planned: number): string {
-  const key = `${category}\u0000${tod}\u0000${planned}`;
-  const now = Date.now();
-  const cached = creationNudgeExposureIds.get(key);
-  if (cached && cached.expiresAt > now) {
-    return cached.exposureId;
-  }
-  const exposureId = newExposureId();
-  creationNudgeExposureIds.set(key, {
-    exposureId,
-    expiresAt: now + CREATION_NUDGE_EXPOSURE_TTL_MS,
-  });
-  return exposureId;
-}
-
-function ackCreationNudgeRender(
-  exposureId: string,
-  contentSnapshot: Record<string, unknown>,
-  attempt = 0
-) {
-  if (
-    pendingCreationNudgeRenderAcks.has(exposureId) ||
-    ackedCreationNudgeRenders.has(exposureId)
-  ) {
-    return;
-  }
-  pendingCreationNudgeRenderAcks.add(exposureId);
-  void ackExposureRender(exposureId, {
-    surfaceId: "task.creation_nudge",
-    clientEventId: `task.creation_nudge:${exposureId}`,
-    contentSnapshot,
-  })
-    .then((ok) => {
-      if (ok) {
-        ackedCreationNudgeRenders.add(exposureId);
-        return;
-      }
-      const retryDelay = CREATION_NUDGE_RENDER_ACK_RETRY_MS[attempt];
-      if (retryDelay !== undefined) {
-        globalThis.setTimeout(() => {
-          ackCreationNudgeRender(exposureId, contentSnapshot, attempt + 1);
-        }, retryDelay);
-      }
-    })
-    .finally(() => {
-      pendingCreationNudgeRenderAcks.delete(exposureId);
-    });
-}
-
-function suppressCreationNudgeExposure(exposureId: string, attempt = 0) {
-  if (
-    pendingCreationNudgeSuppressions.has(exposureId) ||
-    suppressedCreationNudgeExposures.has(exposureId) ||
-    ackedCreationNudgeRenders.has(exposureId)
-  ) {
-    return;
-  }
-  pendingCreationNudgeSuppressions.add(exposureId);
-  void ackExposureSuppression(exposureId, {
-    suppressionReason: "client_discarded_before_render",
-  })
-    .then((ok) => {
-      if (ok) {
-        suppressedCreationNudgeExposures.add(exposureId);
-        return;
-      }
-      const retryDelay = CREATION_NUDGE_SUPPRESSION_RETRY_MS[attempt];
-      if (retryDelay !== undefined) {
-        globalThis.setTimeout(() => {
-          suppressCreationNudgeExposure(exposureId, attempt + 1);
-        }, retryDelay);
-      }
-    })
-    .finally(() => {
-      pendingCreationNudgeSuppressions.delete(exposureId);
-    });
-}
+import { useNewTaskDeadlineControls } from "@/components/use-new-task-deadline-controls";
+import { useCreationNudgeExposure } from "@/lib/hooks/use-creation-nudge-exposure";
+import { useCreationNudgeLookup } from "@/components/use-creation-nudge-lookup";
 
 interface Props {
   open: boolean;
@@ -163,32 +58,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
 
   const [title, setTitle] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const [start, setStart] = useState(() => defaultStart());
-  const [end, setEnd] = useState(() => defaultStart());
   // Default 0h 0m — user must explicitly pick a duration before Create
   // enables (`canSubmit` already requires totalMinutes > 0).
-  const [durHours, setDurHours] = useState(0);
-  const [durMinutes, setDurMinutes] = useState(0);
-  // Category: picker mode uses the fixed taxonomy; "custom" mode reveals
-  // a text input for a user-created name. The Apr 4–15 experiment window
-  // has closed, so operator-created categories are research-safe going
-  // forward (fresh buckets start at n=0 until data accrues for
-  // bias_factor analysis).
-  const [category, setCategory] = useState<string>("work");
-  const [categoryMode, setCategoryMode] = useState<"picker" | "custom">(
-    "picker"
-  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pausedConflict, setPausedConflict] = useState<PausedConflict | null>(null);
   const [softConflict, setSoftConflict] = useState<SoftConflict | null>(null);
   const [lastEditId, setLastEditId] = useState<string | null>(null);
-  const [description, setDescription] = useState("");
-  const [showDescription, setShowDescription] = useState(false);
-  const [nudgeSource, setNudgeSource] = useState<"personal" | "research" | null>(null);
-  const [calibrationNudge, setCalibrationNudge] =
-    useState<CalibrationNudge | null>(null);
-  const creationNudgeExposureRef = useRef<string | null>(null);
   // Once the user decides on the calibration nudge — accept the
   // suggested duration OR dismiss — suppress further fetches for the
   // rest of this modal session. Prevents the re-suggestion loop the
@@ -206,247 +82,94 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     useState<NudgeDecisionData | null>(null);
   const [editScheduleTouched, setEditScheduleTouched] = useState(false);
 
+  const {
+    category,
+    categoryMode,
+    resetCategory,
+    loadCategory,
+    handleCategorySelect,
+    handleCustomCategoryChange,
+    returnToCategoryPicker,
+  } = useNewTaskCategoryControls();
+
+  const {
+    start,
+    end,
+    durHours,
+    durMinutes,
+    totalMinutes,
+    endBeforeStart,
+    suggestAmPmSwap,
+    suggestPushStartToFuture,
+    resetTimeDefaults,
+    loadTimeRange,
+    handleStartChange,
+    handleEndChange,
+    handleDurHoursChange,
+    handleDurMinutesChange,
+    applyDurationMinutes,
+    applyAmPmSwap,
+    applyPushStartToFuture,
+  } = useNewTaskTimeControls({
+    defaultDate,
+    now,
+    onEditScheduleChanged: markEditScheduleChanged,
+  });
+
+  const {
+    description,
+    showDescription,
+    checklistEstimate,
+    resetDescription,
+    loadDescription,
+    showDescriptionField,
+    handleDescriptionChange,
+  } = useNewTaskDescriptionControls(totalMinutes);
+
   // Loop 11 Phase K — deadline picker. `deadlineId` carries the user's
   // explicit choice (or the confirmed parser suggestion). `parserSuggestion`
   // is the read-only Pass 2 preview surfaced as a soft suggestion above the
   // submit button. They live in separate slices so dismissing the suggestion
   // doesn't clobber an already-confirmed picker choice.
-  const [deadlineId, setDeadlineId] = useState<string | null>(null);
-  const [parserSuggestion, setParserSuggestion] =
-    useState<DeadlinePreviewResponse | null>(null);
-  const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
+  const {
+    deadlineId,
+    parserSuggestion,
+    showDeadlinePicker,
+    resetDeadline,
+    loadDeadline,
+    confirmSuggestion,
+    dismissSuggestion,
+    clearBinding,
+    togglePicker,
+    pickDeadline,
+  } = useNewTaskDeadlineControls({
+    open,
+    isEdit,
+    title,
+    description,
+  });
+  const {
+    calibrationNudge,
+    nudgeSource,
+    clearCreationNudge,
+  } = useCreationNudgeLookup({
+    open,
+    category,
+    start,
+    end,
+    durHours,
+    durMinutes,
+    isEdit,
+    editScheduleTouched,
+    nudgeDecisionMade,
+  });
 
-  // Fetch bias_factor when category, start time, or duration changes
-  // (debounced). Create mode remains eligible as soon as the form has a
-  // real duration. Edit mode waits until the operator actually touches
-  // the schedule/duration; opening an existing task should not nag, but
-  // changing the plan should re-run the estimate.
-  // Gated on a valid positive planned duration — a 0-min estimate with
-  // a `|| 30` fallback (prior behavior) fired the "adjust to X min"
-  // popup on an invalid form, visually drowning the end-before-start
-  // error banner. Now the nudge only fires when the user has typed a
-  // real duration AND the range is valid AND the user hasn't already
-  // made a decision on a prior nudge this session.
-  useEffect(() => {
-    const eligible = open && !nudgeDecisionMade && (!isEdit || editScheduleTouched);
-    if (!eligible) {
-      setCalibrationNudge(null);
-      setNudgeSource(null);
-      return;
-    }
-    const planned = durHours * 60 + durMinutes;
-    const rangeValid = diffMinutes(start, end) > 0;
-    if (planned <= 0 || !rangeValid) {
-      setCalibrationNudge(null);
-      setNudgeSource(null);
-      return;
-    }
-    const tod = timeOfDay(start);
-    const firedAt = new Date().toISOString();
-    const exposureId = exposureIdForCreationNudge(category, tod, planned);
-    const provisional = localResearchNudge(category, tod, planned, firedAt, exposureId);
-    if (provisional.factor >= 1.2) {
-      setCalibrationNudge(provisional);
-      setNudgeSource("research");
-    } else {
-      setCalibrationNudge(null);
-      setNudgeSource(null);
-    }
-    const abortCtl = new AbortController();
-    const applyLookupResponse = (res: BiasLookupResponse) => {
-      const isResearch = res.source === "research";
-      const threshold = isResearch ? 1.20 : 1.25;
-      // Rule-13 canonical magnitude (MANIFESTO v1.10): prefer the
-      // shrinkage-blended `bias_factor_final` when present. Keep the
-      // raw cell.bias_factor separate so the UI does not relabel a
-      // prior-blended estimate as pure "early data".
-      const magnitude = res.bias_factor_final ?? res.cell?.bias_factor ?? null;
-      const executionSuggestedMin =
-        res.execution_suggested_minutes ?? (magnitude !== null ? roundTo5(planned * magnitude) : planned);
-      const pauseOverheadMin = res.pause_overhead_minutes ?? 0;
-      const pauseOverheadSampleSize = res.pause_overhead_sample_size ?? 0;
-      const occupancySuggestedMin = res.occupancy_suggested_minutes ?? executionSuggestedMin;
-      const occupancyFactor = res.occupancy_factor ?? (planned > 0 ? occupancySuggestedMin / planned : null);
-      const executionTriggered = magnitude !== null && magnitude >= threshold;
-      const occupancyTriggered =
-        occupancyFactor !== null && occupancyFactor >= threshold && pauseOverheadSampleSize >= 3;
-      if (!res.cell || magnitude === null || (!executionTriggered && !occupancyTriggered)) {
-        if (res.exposure_id && !res.suppressed_reason) {
-          suppressCreationNudgeExposure(res.exposure_id);
-        }
-        if (!abortCtl.signal.aborted) {
-          setCalibrationNudge(null);
-          setNudgeSource(null);
-        }
-        return false;
-      }
-
-      const backendExposureId = res.exposure_id ?? exposureId;
-      const contentSnapshot = {
-        template: "task_creation_nudge_lookup",
-        category: res.cell.category,
-        time_of_day: res.cell.time_of_day,
-        source: isResearch ? "research" : "personal",
-        suggested_minutes: occupancySuggestedMin,
-        execution_suggested_minutes: executionSuggestedMin,
-        pause_overhead_minutes: pauseOverheadMin,
-        pause_overhead_sample_size: pauseOverheadSampleSize,
-        occupancy_suggested_minutes: occupancySuggestedMin,
-        occupancy_strategy: res.occupancy_strategy ?? null,
-        planned_minutes: planned,
-      };
-      if (abortCtl.signal.aborted) {
-        suppressCreationNudgeExposure(backendExposureId);
-        return true;
-      }
-      setCalibrationNudge({
-        cell: res.cell,
-        factor: magnitude,
-        personalFactor: isResearch ? null : res.cell.bias_factor,
-        blendFactor: res.bias_factor_final ?? null,
-        personalWeight: res.personal_weight ?? null,
-        priorWeight: res.prior_weight ?? null,
-        priorFactor: res.archetype_prior_for_cell ?? null,
-        priorCitation: res.archetype_prior_citation ?? res.cell.citation ?? null,
-        suggestedMin: occupancySuggestedMin,
-        executionSuggestedMin,
-        pauseOverheadMin,
-        pauseOverheadSampleSize,
-        occupancySuggestedMin,
-        occupancyStrategy: res.occupancy_strategy ?? null,
-        firedAt,
-        exposureId: backendExposureId,
-        backendReady: true,
-      });
-      setNudgeSource(isResearch ? "research" : "personal");
-      return true;
-    };
-    const timer = setTimeout(() => {
-      lookupBiasFactor(category, tod, planned, { fast: true, exposureId })
-        .then((res) => {
-          const shouldHydrate = applyLookupResponse(res);
-          if (!shouldHydrate) return;
-          void lookupBiasFactor(category, tod, planned, { exposureId: res.exposure_id ?? exposureId })
-            .then(applyLookupResponse)
-            .catch(() => {
-              // Keep the instant research-backed card if the personal
-              // hydration path misses; the fast path already registered
-              // the visible surface for exposure accounting.
-            });
-        })
-        .catch(() => { if (!abortCtl.signal.aborted) { setCalibrationNudge(null); setNudgeSource(null); } });
-    }, BIAS_LOOKUP_DEBOUNCE_MS);
-    return () => { clearTimeout(timer); abortCtl.abort(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, category, start, end, durHours, durMinutes, isEdit, editScheduleTouched, nudgeDecisionMade]);
-
-  const creationNudgeRenderSnapshot = () => {
-    if (!calibrationNudge) {
-      return null;
-    }
-    return {
-      template: "task_creation_nudge_lookup",
-      category: calibrationNudge.cell.category,
-      time_of_day: calibrationNudge.cell.time_of_day,
-      source: nudgeSource,
-      suggested_minutes: calibrationNudge.suggestedMin,
-      execution_suggested_minutes: calibrationNudge.executionSuggestedMin,
-      pause_overhead_minutes: calibrationNudge.pauseOverheadMin,
-      pause_overhead_sample_size: calibrationNudge.pauseOverheadSampleSize,
-      occupancy_suggested_minutes: calibrationNudge.occupancySuggestedMin,
-      occupancy_strategy: calibrationNudge.occupancyStrategy,
-      planned_minutes: durHours * 60 + durMinutes,
-    };
-  };
-
-  const ackVisibleCreationNudge = () => {
-    const exposureId = calibrationNudge?.exposureId;
-    const contentSnapshot = creationNudgeRenderSnapshot();
-    if (!exposureId || !contentSnapshot) {
-      return;
-    }
-    ackCreationNudgeRender(exposureId, contentSnapshot);
-  };
-
-  useEffect(() => {
-    if (!calibrationNudge?.exposureId || !calibrationNudge.backendReady) {
-      return;
-    }
-    ackVisibleCreationNudge();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calibrationNudge, durHours, durMinutes, nudgeSource]);
-
-  useEffect(() => {
-    const currentExposureId =
-      calibrationNudge?.backendReady && calibrationNudge.exposureId
-        ? calibrationNudge.exposureId
-        : null;
-    const previousExposureId = creationNudgeExposureRef.current;
-    if (
-      previousExposureId &&
-      previousExposureId !== currentExposureId &&
-      !pendingCreationNudgeRenderAcks.has(previousExposureId) &&
-      !ackedCreationNudgeRenders.has(previousExposureId)
-    ) {
-      suppressCreationNudgeExposure(previousExposureId);
-    }
-    creationNudgeExposureRef.current = currentExposureId;
-  }, [calibrationNudge?.backendReady, calibrationNudge?.exposureId]);
-
-  useEffect(() => {
-    return () => {
-      const previousExposureId = creationNudgeExposureRef.current;
-      if (
-        previousExposureId &&
-        !pendingCreationNudgeRenderAcks.has(previousExposureId) &&
-        !ackedCreationNudgeRenders.has(previousExposureId)
-      ) {
-        suppressCreationNudgeExposure(previousExposureId);
-      }
-      creationNudgeExposureRef.current = null;
-    };
-  }, []);
-
-  // Loop 11 Phase K — Pass 2 deadline-binding preview.
-  //
-  // Debounced 500ms (matches the bias_factor lookup cadence) and
-  // race-safe: we abort any in-flight fetch on every input change, so
-  // a slower late-firing response can't overwrite a fresher one. The
-  // effect skips when the user has already explicitly picked a deadline
-  // (deadlineId set) — the manual choice wins and we don't second-guess
-  // it with a parser suggestion.
-  useEffect(() => {
-    if (!open || isEdit) {
-      setParserSuggestion(null);
-      return;
-    }
-    const trimmed = title.trim();
-    if (trimmed.length < 3 || deadlineId) {
-      setParserSuggestion(null);
-      return;
-    }
-    const abortCtl = new AbortController();
-    const timer = setTimeout(() => {
-      previewDeadlineBinding(trimmed, description.trim() || undefined)
-        .then((res) => {
-          if (abortCtl.signal.aborted) return;
-          if (res.deadline_id) setParserSuggestion(res);
-          else setParserSuggestion(null);
-        })
-        .catch(() => {
-          if (!abortCtl.signal.aborted) setParserSuggestion(null);
-        });
-    }, 500);
-    return () => { clearTimeout(timer); abortCtl.abort(); };
-  }, [open, isEdit, title, description, deadlineId]);
-
-  useEffect(() => {
-    void ackExposureRender(parserSuggestion?.exposure_id);
-  }, [parserSuggestion?.exposure_id]);
-
-  const totalMinutes = durHours * 60 + durMinutes;
-  const endBeforeStart = diffMinutes(start, end) <= 0;
   const canSubmit = !submitting && title.trim().length > 0 && !endBeforeStart && totalMinutes > 0;
+  const { ackVisibleCreationNudge } = useCreationNudgeExposure({
+    nudge: calibrationNudge,
+    source: nudgeSource,
+    plannedMinutes: totalMinutes,
+  });
 
   // AM/PM-swap recovery. Native <input type="datetime-local"> keeps
   // whichever period was last rendered; if the user types "1:45" meaning
@@ -462,12 +185,6 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // NEXT day's 9:25 AM, and the time-only display hid the date change.
   // Same-day check on the shifted result catches any cross-midnight
   // shift defensively.
-  const suggestAmPmSwap = endBeforeStart ? getAmPmSwapSuggestion(start, end) : null;
-  function applyAmPmSwap() {
-    if (!suggestAmPmSwap) return;
-    handleEndChange(suggestAmPmSwap);
-  }
-
   // Past-start recovery. Distinct concern from AM/PM swap: user typed a
   // start time that's already passed (e.g., it's 9:23 PM and they set
   // start to 9:20 PM by accident, or the modal's `defaultStart` round-
@@ -478,36 +195,22 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
   // the past; the 60s useCurrentTime tick means the suggestion
   // naturally appears after the user lingers past the original
   // round-up mark.
-  const suggestPushStartToFuture = getPushStartToFutureSuggestion(start, now);
-  function applyPushStartToFuture() {
-    if (!suggestPushStartToFuture) return;
-    handleStartChange(suggestPushStartToFuture);
-  }
-
   // Fresh defaults every time modal opens for a new task.
   // Using `open` as only dep intentionally — the 60s `now` tick must
   // not clobber in-progress typing.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open && !editingTask) {
-      const s = defaultDate ? defaultStartForDate(defaultDate, now) : defaultStart(now);
-      setStart(s);
-      setEnd(s);
-      setDurHours(0);
-      setDurMinutes(0);
+      resetTimeDefaults();
       setTitle("");
-      setCategory("work");
-      setCategoryMode("picker");
-      setDescription("");
-      setShowDescription(false);
+      resetCategory();
+      resetDescription();
       setError(null);
       setPausedConflict(null);
       setNudgeDecisionMade(false);
       setNudgeDecisionData(null);
       setEditScheduleTouched(false);
-      setDeadlineId(null);
-      setParserSuggestion(null);
-      setShowDeadlinePicker(false);
+      resetDeadline();
       setLastEditId(null);
     }
   }, [open, editingTask]);
@@ -523,62 +226,52 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     }
   }, [open, editingTask]);
 
-  // Sync form fields when editingTask changes
-  if (editingTask && editingTask.task_id !== lastEditId) {
+  // Sync form fields when editingTask changes.
+  useLayoutEffect(() => {
+    if (!editingTask || editingTask.task_id === lastEditId) {
+      return;
+    }
     const startDate = editingTask.start ? new Date(editingTask.start) : new Date();
     const endDate = editingTask.end ? new Date(editingTask.end) : new Date();
-    const dur = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60_000));
     setTitle(editingTask.title);
-    setStart(formatLocal(startDate));
-    setEnd(formatLocal(endDate));
-    setDurHours(Math.floor(dur / 60));
-    setDurMinutes(dur % 60);
-    const editCat = editingTask.category || "work";
-    setCategory(editCat);
-    // If the editing task has a custom (non-taxonomy) category, open the
-    // custom input pre-filled so the operator can edit it directly.
-    setCategoryMode(
-      (CATEGORIES as readonly string[]).includes(editCat) ? "picker" : "custom"
-    );
+    loadTimeRange(startDate, endDate);
+    loadCategory(editingTask.category);
     // Edit-modal parity (2026-04-28): load description + deadline_id
     // from the task. Without this, opening edit + saving would silently
     // wipe both fields — DATA LOSS bug.
-    setDescription(editingTask.description ?? "");
-    setShowDescription(!!editingTask.description);
-    setDeadlineId(editingTask.deadline_id ?? null);
+    loadDescription(editingTask.description);
+    loadDeadline(editingTask.deadline_id);
     setError(null);
     setPausedConflict(null);
     setSoftConflict(null);
-    setCalibrationNudge(null);
-    setNudgeSource(null);
+    clearCreationNudge();
     setNudgeDecisionMade(false);
     setNudgeDecisionData(null);
     setEditScheduleTouched(false);
     setLastEditId(editingTask.task_id);
-  }
+  }, [
+    clearCreationNudge,
+    editingTask,
+    lastEditId,
+    loadCategory,
+    loadDeadline,
+    loadDescription,
+    loadTimeRange,
+  ]);
 
   function resetForm() {
-    const s = defaultDate ? defaultStartForDate(defaultDate, now) : defaultStart(now);
+    resetTimeDefaults();
     setTitle("");
-    setStart(s);
-    setEnd(s);
-    setDurHours(0);
-    setDurMinutes(0);
-    setCategory("work");
-    setCategoryMode("picker");
-    setDescription("");
-    setShowDescription(false);
+    resetCategory();
+    resetDescription();
     setError(null);
     setPausedConflict(null);
     setSoftConflict(null);
-    setCalibrationNudge(null);
-    setNudgeSource(null);
+    clearCreationNudge();
     setNudgeDecisionMade(false);
     setNudgeDecisionData(null);
     setEditScheduleTouched(false);
-    setDeadlineId(null);
-    setParserSuggestion(null);
-    setShowDeadlinePicker(false);
+    resetDeadline();
     setLastEditId(null);
   }
 
@@ -600,55 +293,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     onInterruptionCreated,
   });
 
-  // --- Bidirectional binding helpers ---
+  // --- Edit schedule touch helper ---
 
   function markEditScheduleChanged() {
     if (!isEdit) return;
     setEditScheduleTouched(true);
     setNudgeDecisionMade(false);
     setNudgeDecisionData(null);
-  }
-
-  function handleStartChange(newStart: string) {
-    markEditScheduleChanged();
-    // Preserve current duration, shift end
-    const dur = durHours * 60 + durMinutes;
-    setStart(newStart);
-    setEnd(addMinutes(newStart, dur));
-  }
-
-  function handleEndChange(newEnd: string) {
-    markEditScheduleChanged();
-    setEnd(newEnd);
-    const mins = diffMinutes(start, newEnd);
-    // Always update duration so the UI stays consistent with start/end.
-    // For negative ranges we zero the duration state, but the
-    // `endBeforeStart` flag drives the error banner + nudge-suppression
-    // so the user gets feedback that the range is invalid (previously
-    // the duration silently stayed at the last good value, producing
-    // "0h 0m / End before start" while the two fields visibly
-    // disagreed — see dogfood 2026-04-21 AM/PM bug report).
-    if (mins > 0) {
-      setDurHours(Math.floor(mins / 60));
-      setDurMinutes(mins % 60);
-    } else {
-      setDurHours(0);
-      setDurMinutes(0);
-    }
-  }
-
-  function handleDurHoursChange(h: number) {
-    markEditScheduleChanged();
-    const clamped = Math.max(0, h);
-    setDurHours(clamped);
-    setEnd(addMinutes(start, clamped * 60 + durMinutes));
-  }
-
-  function handleDurMinutesChange(m: number) {
-    markEditScheduleChanged();
-    const clamped = Math.max(0, m);
-    setDurMinutes(clamped);
-    setEnd(addMinutes(start, durHours * 60 + clamped));
   }
 
   // --- Submit ---
@@ -671,9 +322,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           new_end: endDate.toISOString(),
           title: title.trim(),
           category,
-          // Edit-modal parity (2026-04-28): description + deadline_id
-          // now editable. Backend resets llm_parse_status='pending' on
-          // description change so the chip refreshes.
+          // Description + deadline_id are editable. Backend refreshes
+          // deterministic deadline suggestions when task text changes.
           description: description.trim() || undefined,
           deadline_id: deadlineId ?? undefined,
           clear_deadline: clearDeadline,
@@ -752,6 +402,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
     <Dialog open={open} onOpenChange={(o) => { if (!o) { resetForm(); onClose(); } }}>
       <DialogContent
         data-testid="new-task-modal"
+        className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto"
         onKeyDown={(e) => {
           if (e.key !== "Enter") return;
           if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -868,14 +519,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             {categoryMode === "picker" ? (
               <CategorySelect
                 value={category}
-                onChange={(val) => {
-                  if (val === "__CREATE_NEW__") {
-                    setCategoryMode("custom");
-                    setCategory("");
-                  } else {
-                    setCategory(val);
-                  }
-                }}
+                onChange={handleCategorySelect}
               />
             ) : (
               <div className="flex items-center gap-2">
@@ -883,7 +527,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   data-testid="new-task-category-custom"
                   id="category"
                   value={category}
-                  onChange={(e) => setCategory(e.target.value)}
+                  onChange={(e) => handleCustomCategoryChange(e.target.value)}
                   placeholder="e.g. research, admin, side_project"
                   autoComplete="off"
                   autoFocus
@@ -892,10 +536,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   data-testid="new-task-category-back"
                   type="button"
                   className="whitespace-nowrap text-xs text-dust transition-colors hover:text-parchment"
-                  onClick={() => {
-                    setCategoryMode("picker");
-                    setCategory("work");
-                  }}
+                  onClick={returnToCategoryPicker}
                 >
                   ← Back
                 </button>
@@ -909,16 +550,15 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
             )}
           </div>
 
-          {/* Edit-modal parity (2026-04-28): description was previously
-              gated to create-only. Now editable on edit too — the
-              reschedule endpoint resets llm_parse_status='pending' on
-              change so the chip refreshes. */}
+          {/* Description is editable in both create and edit mode. The
+              backend refreshes deterministic deadline suggestions when task
+              text changes. */}
           <div className="flex flex-col gap-1.5">
             {!showDescription ? (
               <button
                 type="button"
                 className="flex items-center gap-1 text-xs text-dust-deep transition-colors hover:text-dust"
-                onClick={() => setShowDescription(true)}
+                onClick={showDescriptionField}
               >
                 <span>{isEdit ? "Edit details" : "Add details"}</span>
                 <span className="text-[10px]">▾</span>
@@ -930,24 +570,16 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                   data-testid="new-task-description"
                   id="description"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => handleDescriptionChange(e.target.value)}
                   placeholder="- Step one&#10;- Step two&#10;- Step three"
                   rows={3}
                   className="rounded-sm border border-hairline-signal/30 bg-transparent px-3 py-2 text-sm text-parchment placeholder:text-dust-deep resize-none"
                 />
-                {(() => {
-                  const items = description.split("\n").filter((l) => /^\s*[-*•]\s|^\s*\d+[.)]\s/.test(l));
-                  const planned = durHours * 60 + durMinutes;
-                  if (items.length >= 2 && planned > 0) {
-                    const perItem = Math.round((planned / items.length) * 10) / 10;
-                    return (
-                      <span className="text-[11px] text-dust-deep">
-                        {items.length} items, ~{perItem} min each based on your estimate
-                      </span>
-                    );
-                  }
-                  return null;
-                })()}
+                {checklistEstimate && (
+                  <span className="text-[11px] text-dust-deep">
+                    {checklistEstimate.itemCount} items, ~{checklistEstimate.perItemMinutes} min each based on your estimate
+                  </span>
+                )}
               </>
             )}
           </div>
@@ -974,62 +606,13 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
           )}
 
           {pausedConflict && (
-            <>
-              <div className="rounded-md border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
-                <span className="font-medium text-parchment">{pausedConflict.title}</span>{" "}
-                is paused in this window.{" "}
-                {pausedConflict.blockingTitles.length === 0 ? (
-                  <>
-                    Start{" "}
-                    <span className="font-medium text-parchment">{title.trim()}</span>{" "}
-                    as an interruption? It will be linked — you can resume{" "}
-                    <span className="font-medium text-parchment">{pausedConflict.title}</span>{" "}
-                    after.
-                  </>
-                ) : (
-                  <>
-                    To interrupt it, adjust the time to avoid the blocking conflict
-                    {pausedConflict.blockingTitles.length > 1 ? "s" : ""} below.
-                  </>
-                )}
-              </div>
-              {pausedConflict.blockingTitles.length > 0 && (
-                <div className="rounded border border-ember/40 bg-ember/5 p-2 text-xs text-ember">
-                  Also conflicts with: {pausedConflict.blockingTitles.join(", ")}
-                </div>
-              )}
-            </>
+            <NewTaskPausedConflictPanel
+              conflict={pausedConflict}
+              pendingTitle={title.trim()}
+            />
           )}
-
           {softConflict && (
-            <div className="rounded-md border border-ember/40 bg-ember/5 p-3 text-xs text-ember">
-              {softConflict.executingTitles.length > 0 && (
-                <div>
-                  Timer running on{" "}
-                  <span className="font-medium text-parchment">
-                    {softConflict.executingTitles.join(", ")}
-                  </span>
-                  .
-                </div>
-              )}
-              {softConflict.overlapTitles.length > 0 && (
-                <div>
-                  Overlaps with{" "}
-                  <span className="font-medium text-parchment">
-                    {softConflict.overlapTitles.join(", ")}
-                  </span>
-                  .
-                </div>
-              )}
-              {softConflict.reasons.includes("duplicate_title") && softConflict.duplicateTitle && (
-                <div>
-                  Already have{" "}
-                  <span className="font-medium text-parchment">{softConflict.duplicateTitle}</span>{" "}
-                  today.
-                </div>
-              )}
-              <div className="mt-1 text-dust">Create as planned anyway?</div>
-            </div>
+            <NewTaskSoftConflictPanel conflict={softConflict} />
           )}
 
           {/* Loop 11 Phase K — deadline picker.
@@ -1046,20 +629,11 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
               deadlineId={deadlineId}
               suggestion={isEdit ? null : parserSuggestion}
               showPicker={showDeadlinePicker}
-              onConfirmSuggestion={() => {
-                if (parserSuggestion?.deadline_id) {
-                  setDeadlineId(parserSuggestion.deadline_id);
-                  setParserSuggestion(null);
-                }
-              }}
-              onDismissSuggestion={() => setParserSuggestion(null)}
-              onClearBinding={() => setDeadlineId(null)}
-              onTogglePicker={() => setShowDeadlinePicker((s) => !s)}
-              onPick={(id) => {
-                setDeadlineId(id);
-                setShowDeadlinePicker(false);
-                setParserSuggestion(null);
-              }}
+              onConfirmSuggestion={confirmSuggestion}
+              onDismissSuggestion={dismissSuggestion}
+              onClearBinding={clearBinding}
+              onTogglePicker={togglePicker}
+              onPick={pickDeadline}
             />
           )}
 
@@ -1074,10 +648,8 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 setNudgeDecisionData(
                   nudgeDecisionFromCalibration(calibrationNudge, "accepted"),
                 );
-                setDurHours(Math.floor(newMin / 60));
-                setDurMinutes(newMin % 60);
-                setEnd(addMinutes(start, newMin));
-                setCalibrationNudge(null);
+                applyDurationMinutes(newMin);
+                clearCreationNudge();
                 setNudgeDecisionMade(true);
               }}
               onKeepEstimate={() => {
@@ -1085,7 +657,7 @@ export function NewTaskModal({ open, onClose, onCreated, onInterruptionCreated, 
                 setNudgeDecisionData(
                   nudgeDecisionFromCalibration(calibrationNudge, "dismissed"),
                 );
-                setCalibrationNudge(null);
+                clearCreationNudge();
                 setNudgeDecisionMade(true);
               }}
             />

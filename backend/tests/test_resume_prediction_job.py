@@ -2,9 +2,9 @@
 
 Wave 0 stabilization: the Today banner is only useful if the worker creates
 one continuity notification for a genuinely paused session, stays quiet on
-fresh pauses, and respects cooldown / max-fire caps.
+fresh pauses and user-local quiet hours, and respects cooldown / max-fire caps.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import DEFAULT, patch
 from uuid import uuid4
 
@@ -12,7 +12,9 @@ import pytest
 from sqlalchemy import text
 
 from app.db.models import (
+    NotificationLifecycleEvent,
     PauseEvent,
+    PausePredictionLog,
     ResumePredictionLog,
     StopwatchSession,
     Task,
@@ -27,13 +29,25 @@ from app.services.resume_predictor import (
     ResumePrediction,
 )
 from app.utils.time_utils import now_utc
+from app.workers.jobs import resume_prediction
 from app.workers.jobs.resume_prediction import _run_for_one_user
+
+
+TEST_NOW_UTC = datetime(2026, 7, 15, 12, 0)
+
+
+@pytest.fixture(autouse=True)
+def _stable_worker_clock(monkeypatch):
+    monkeypatch.setattr(resume_prediction, "now_utc", lambda: TEST_NOW_UTC)
+    monkeypatch.setitem(globals(), "now_utc", lambda: TEST_NOW_UTC)
 
 
 @pytest.fixture(autouse=True)
 def _clean_slate(db):
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM notification_lifecycle_event"))
+    db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
     db.execute(text("DELETE FROM stopwatch_session"))
@@ -43,6 +57,8 @@ def _clean_slate(db):
     yield
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM notification_lifecycle_event"))
+    db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
     db.execute(text("DELETE FROM stopwatch_session"))
@@ -176,6 +192,106 @@ def test_resume_prediction_firing_writes_log_and_queues_notification(db):
     assert decision_kwargs["delivered_at"] is None
 
 
+def test_dismissed_resume_family_silences_current_session(db):
+    user = _make_user(db)
+    task, session, _pause = _make_paused_task_with_open_pause(db, user.user_id)
+    db.add(
+        NotificationLifecycleEvent(
+            user_id=user.user_id,
+            notification_id="dismissed-resume-current-session",
+            channel="web",
+            notification_type="resume_prediction",
+            status="dismissed",
+            task_id=task.task_id,
+            session_id=session.session_id,
+            queued_at=TEST_NOW_UTC,
+            rendered_at=TEST_NOW_UTC,
+            dismissed_at=TEST_NOW_UTC,
+            last_transition_at=TEST_NOW_UTC,
+        )
+    )
+    db.commit()
+    set_current_user_id(user.user_id)
+
+    with patch("app.workers.jobs.resume_prediction.ResumePredictor") as mock_cls, \
+         _patch_delivery() as patched:
+        mock_cls.return_value.predict.return_value = _prediction(
+            user.user_id, session, task
+        )
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert patched["enqueue_user_notification"].call_count == 0
+    assert db.query(ResumePredictionLog).count() == 0
+
+
+def test_quiet_hours_skip_resume_prediction_before_any_write(db):
+    user = _make_user(db)
+    user.timezone = "Asia/Tokyo"
+    db.commit()
+    _make_paused_task_with_open_pause(db, user.user_id)
+    set_current_user_id(user.user_id)
+
+    with patch(
+        "app.workers.jobs.resume_prediction.now_utc",
+        return_value=datetime(2026, 7, 15, 13, 0),
+    ), patch(
+        "app.workers.jobs.resume_prediction.ResumePredictor"
+    ) as mock_cls, _patch_delivery() as patched:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert patched["enqueue_user_notification"].call_count == 0
+    assert patched["create_output_surface_decision"].call_count == 0
+    assert db.query(ResumePredictionLog).count() == 0
+
+
+def test_invalid_timezone_fails_closed_for_resume_prediction(db):
+    user = _make_user(db)
+    user.timezone = "Not/A-Timezone"
+    db.commit()
+    _make_paused_task_with_open_pause(db, user.user_id)
+    set_current_user_id(user.user_id)
+
+    with patch(
+        "app.workers.jobs.resume_prediction.ResumePredictor"
+    ) as mock_cls, _patch_delivery() as patched:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert patched["enqueue_user_notification"].call_count == 0
+    assert db.query(ResumePredictionLog).count() == 0
+
+
+def test_recent_pause_prediction_blocks_resume_family(db):
+    user = _make_user(db)
+    task, _session, _pause = _make_paused_task_with_open_pause(db, user.user_id)
+    db.add(
+        PausePredictionLog(
+            user_id=user.user_id,
+            fired_at=TEST_NOW_UTC - timedelta(minutes=29),
+            predicted_at=TEST_NOW_UTC - timedelta(minutes=26),
+            mechanism="clock_anchor",
+            confidence=0.7,
+            lead_minutes=3,
+            sample_size=7,
+            active_task_id=task.task_id,
+        )
+    )
+    db.commit()
+    set_current_user_id(user.user_id)
+
+    with patch(
+        "app.workers.jobs.resume_prediction.ResumePredictor"
+    ) as mock_cls, _patch_delivery() as patched:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert patched["enqueue_user_notification"].call_count == 0
+    assert db.query(ResumePredictionLog).count() == 0
+    assert db.query(PausePredictionLog).count() == 1
+
+
 def test_fresh_pause_does_not_fire_resume_prediction(db):
     user = _make_user(db)
     _make_paused_task_with_open_pause(db, user.user_id, paused_for_minutes=5)
@@ -220,6 +336,7 @@ def test_resume_prediction_cooldown_blocks_refire(db):
 
 
 def test_resume_prediction_max_fire_cap_blocks_nagging(db):
+    assert MAX_FIRES_PER_SESSION == 2
     user = _make_user(db)
     task, session, _pause = _make_paused_task_with_open_pause(db, user.user_id)
     for i in range(MAX_FIRES_PER_SESSION):

@@ -8,8 +8,7 @@ Two routes power the new onboarding surface:
 
 Operator-locked design:
   - Deterministic over magic. Heuristic is the synchronous critical
-    path; LLM enrichment fires per-task afterward via the existing
-    llm_enrichment APScheduler job (nothing new to build here).
+    path; no model provider runs during or after this flow.
   - "Catches the user from the get-go." The brain-dump still gates
     onboarding completion; the rewritten UI does multi-parse + auto-
     bind + one-tap binding confirmation block instead of the meta
@@ -33,6 +32,7 @@ from app.api.deps import get_db
 from app.db.models import Deadline, User
 from app.db.scoping import get_current_user_id
 from app.schemas.brain_dump import (
+    BrainDumpCommitOutcome,
     BrainDumpCommitRequest,
     BrainDumpCommitResponse,
     BrainDumpFailedItem,
@@ -142,6 +142,32 @@ def brain_dump_commit(
     # response so the frontend can render a retry-or-edit panel.
     # Pre-fix the endpoint logged + dropped silently.
     failed_items: list[BrainDumpFailedItem] = []
+    outcomes: list[BrainDumpCommitOutcome] = []
+
+    def _record_failure(
+        item,
+        *,
+        reason: str,
+        detail: str,
+        retry_hint: Optional[str],
+    ) -> None:
+        failed_items.append(BrainDumpFailedItem(
+            item_id=item.item_id,
+            kind=item.kind,
+            title=item.title,
+            reason=reason,
+            detail=detail,
+            retry_hint=retry_hint,
+        ))
+        outcomes.append(BrainDumpCommitOutcome(
+            item_id=item.item_id,
+            kind=item.kind,
+            title=item.title,
+            status="failed" if reason == "internal" else "rejected",
+            reason=reason,
+            detail=detail,
+            retry_hint=retry_hint,
+        ))
 
     def _classify_failure(exc: Exception) -> tuple[str, str, Optional[str]]:
         """Map a TaskManager / DeadlineManager ValueError into a
@@ -173,14 +199,12 @@ def brain_dump_commit(
                 f"brain_dump commit: skipping deadline '{item.title}' — "
                 f"no when_local"
             )
-            failed_items.append(BrainDumpFailedItem(
-                item_id=item.item_id,
-                kind=item.kind,
-                title=item.title,
+            _record_failure(
+                item,
                 reason="missing_when",
-                detail="Deadline needs an explicit due date — none was parsed.",
+                detail="Deadline needs an explicit due date - none was parsed.",
                 retry_hint="edit_when_local",
-            ))
+            )
             continue
         try:
             due_at_utc = to_utc(item.when_local)
@@ -192,10 +216,12 @@ def brain_dump_commit(
                 # Reuse the existing deadline for confirmed bindings instead
                 # of inflating the pressure map with a second same-day anchor.
                 deadline_id_map[item.item_id] = duplicate.deadline_id
-                failed_items.append(BrainDumpFailedItem(
+                outcomes.append(BrainDumpCommitOutcome(
                     item_id=item.item_id,
                     kind=item.kind,
                     title=item.title,
+                    status="reused",
+                    canonical_id=duplicate.deadline_id,
                     reason="duplicate_deadline",
                     detail=(
                         "A deadline with this title already exists on the "
@@ -211,6 +237,13 @@ def brain_dump_commit(
             )
             deadline_id_map[item.item_id] = deadline.deadline_id
             deadline_ids.append(deadline.deadline_id)
+            outcomes.append(BrainDumpCommitOutcome(
+                item_id=item.item_id,
+                kind=item.kind,
+                title=item.title,
+                status="created",
+                canonical_id=deadline.deadline_id,
+            ))
         except Exception as e:  # noqa: BLE001 — record + continue
             logger.error(
                 f"brain_dump commit: deadline create failed for "
@@ -218,14 +251,12 @@ def brain_dump_commit(
                 exc_info=True,
             )
             reason, detail, retry_hint = _classify_failure(e)
-            failed_items.append(BrainDumpFailedItem(
-                item_id=item.item_id,
-                kind=item.kind,
-                title=item.title,
+            _record_failure(
+                item,
                 reason=reason,
                 detail=detail,
                 retry_hint=retry_hint,
-            ))
+            )
 
     # ── 2. Tasks ─────────────────────────────────────────────────────
     # Build a binding lookup so we can pass deadline_id straight to
@@ -259,7 +290,7 @@ def brain_dump_commit(
         deadline_id = binding_for_task.get(item.item_id)
 
         try:
-            task, _conflicts, _notion = task_manager.create_task(
+            task, _conflicts, _legacy_external_sync = task_manager.create_task(
                 title=item.title,
                 start=when_local,
                 end=end_local,
@@ -278,20 +309,25 @@ def brain_dump_commit(
             if task is not None:
                 task_id_map[item.item_id] = task.task_id
                 task_ids.append(task.task_id)
+                outcomes.append(BrainDumpCommitOutcome(
+                    item_id=item.item_id,
+                    kind=item.kind,
+                    title=item.title,
+                    status="created",
+                    canonical_id=task.task_id,
+                ))
                 if deadline_id is not None:
                     bindings_applied += 1
             else:
                 # task is None when create_task returns (None, conflict_result, _)
                 # for a soft-conflict rejection — shouldn't happen with
                 # force_conflicts=True, but defense in depth.
-                failed_items.append(BrainDumpFailedItem(
-                    item_id=item.item_id,
-                    kind=item.kind,
-                    title=item.title,
+                _record_failure(
+                    item,
                     reason="conflict_blocked",
                     detail="Task creation rejected for conflicts.",
                     retry_hint="edit_when_local",
-                ))
+                )
         except Exception as e:  # noqa: BLE001
             logger.error(
                 f"brain_dump commit: task create failed for "
@@ -299,14 +335,12 @@ def brain_dump_commit(
                 exc_info=True,
             )
             reason, detail, retry_hint = _classify_failure(e)
-            failed_items.append(BrainDumpFailedItem(
-                item_id=item.item_id,
-                kind=item.kind,
-                title=item.title,
+            _record_failure(
+                item,
                 reason=reason,
                 detail=detail,
                 retry_hint=retry_hint,
-            ))
+            )
 
     # ── 3. Onboarding stamp ──────────────────────────────────────────
     # TaskManager.create_task already stamps onboarding_completed_at on
@@ -324,6 +358,7 @@ def brain_dump_commit(
         bindings_applied=bindings_applied,
         task_ids=task_ids,
         deadline_ids=deadline_ids,
+        outcomes=outcomes,
         failed_items=failed_items,
     )
     if idempotency_cache is not None and idempotency_key is not None:

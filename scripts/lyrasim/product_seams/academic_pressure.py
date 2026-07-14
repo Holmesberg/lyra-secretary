@@ -47,8 +47,15 @@ def seed_baseet_deadlines_from_scenario(
 
 def lyra_output_from_pressure_map_response(
     response: Mapping[str, Any],
+    *,
+    verified_rendered_exposure_id: str | None = None,
 ) -> LyraOutput:
-    """Convert actual pressure-map output into LyraSim scorer input."""
+    """Convert actual pressure-map output into LyraSim scorer input.
+
+    The caller may claim the exposure-ledger seam only after independently
+    reading browser-acknowledged render evidence from the product database.
+    Delivery metadata in the response is intentionally insufficient.
+    """
     recovery_actions = tuple(
         str(option.get("action"))
         for option in response.get("recovery_options", [])
@@ -64,7 +71,8 @@ def lyra_output_from_pressure_map_response(
         if value
     )
     seams = ["academic_pressure.pressure_map"]
-    if response.get("exposure_id") and response.get("render_id"):
+    exposure_id = response.get("exposure_id")
+    if exposure_id and str(exposure_id) == verified_rendered_exposure_id:
         seams.append("output_surfaces.exposure_ledger")
 
     safe_action_type = (

@@ -1,12 +1,14 @@
 services:
   backend:
+    image: lyra-backend-public:current
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        BUILD_ID: ${BACKEND_BUILD_ID:-dev}
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
       - ./runtime_topology.json:/runtime_topology.json:ro
       - lyra_data:/app/data
     environment:
@@ -17,8 +19,7 @@ services:
       # 2026-04-16 and restarting backend.
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/lyra.db}
       - REDIS_URL=redis://redis:6379/0
-      - NOTION_API_KEY=${NOTION_API_KEY:-}
-      - NOTION_DATABASE_ID=${NOTION_DATABASE_ID:-}
+      - BUILD_ID=${BACKEND_BUILD_ID:-dev}
       - USER_TIMEZONE=Africa/Cairo
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
@@ -28,23 +29,6 @@ services:
       # NEXTAUTH_SECRET used to mint backendToken in frontend/lib/auth.ts.
       - JWT_SECRET=${JWT_SECRET:-dev-only-replace-me-with-32-byte-urlsafe-secret}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
-      # Magic-for-alpha: Local LLM async parser (Workstream 1, 2026-04-28).
-      # Operator runs Ollama on the host (Windows/WSL2 install). Backend
-      # reaches it via host.docker.internal. If the service is down, the
-      # llm_enrichment job marks tasks as llm_parse_status='unavailable'
-      # and the UI degrades to regex output — task creation never blocks
-      # on this dependency.
-      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
-      # JARVIS — NVIDIA NIM (operator-only, 2026-04-30). When unset, JARVIS
-      # endpoints return graceful 'offline' responses; LLM enrichment falls
-      # back to Ollama. Default model is Kimi K2.6 with thinking enabled.
-      - NVIDIA_NIM_API_KEY=${NVIDIA_NIM_API_KEY:-}
-      - NVIDIA_NIM_MODEL=${NVIDIA_NIM_MODEL:-moonshotai/kimi-k2.6}
-      - NVIDIA_NIM_BASE_URL=${NVIDIA_NIM_BASE_URL:-https://integrate.api.nvidia.com/v1}
-      - NVIDIA_NIM_TIMEOUT_SECONDS=${NVIDIA_NIM_TIMEOUT_SECONDS:-120}
-      - NVIDIA_NIM_ENABLE_THINKING=${NVIDIA_NIM_ENABLE_THINKING:-true}
-      - NVIDIA_NIM_JARVIS_MAX_TOKENS=${NVIDIA_NIM_JARVIS_MAX_TOKENS:-16384}
       # Moodle Web Services — auto-detect assignment submission status
       # (operator-only Phase 1 validation 2026-05-01). When unset,
       # submission detection is disabled and operator falls back to the
@@ -59,14 +43,9 @@ services:
       - LYRA_BASEET_PRESSURE_INPUT_ENABLED=${LYRA_BASEET_PRESSURE_INPUT_ENABLED:-true}
       - LYRA_PROVIDER_PROGRESS_SIGNALS_ENABLED=${LYRA_PROVIDER_PROGRESS_SIGNALS_ENABLED:-true}
       - LYRA_RECOVERY_NUDGES_ENABLED=${LYRA_RECOVERY_NUDGES_ENABLED:-true}
-    extra_hosts:
-      # Required on Linux/WSL2 for host.docker.internal to resolve to the
-      # host. Docker Desktop adds this automatically on Windows/Mac, but
-      # being explicit covers the WSL2 case where it's not always there.
-      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   redis:
     image: redis:7-alpine
@@ -74,20 +53,6 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-
-  # NOTE on Ollama: operator runs Ollama natively on the host
-  # (Windows/WSL2). Backend reaches it via host.docker.internal:11434.
-  # No Docker Compose service is needed. To swap to a containerized
-  # Ollama later, uncomment the block below and remove host.docker.internal
-  # config from the backend env above.
-  #
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama_data:/root/.ollama
-  #   restart: unless-stopped
 
 volumes:
   lyra_data:

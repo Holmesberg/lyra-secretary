@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 from app.db.models import (
+    ExposureAckEvent,
     ExposureDecisionEvent,
     ExposureRenderEvent,
     StopwatchSession,
@@ -414,7 +415,14 @@ def test_insights_endpoint_only_returns_contract_safe_generators(
         .first()
     )
     assert decision is not None
-    assert decision.decision_status == "rendered"
+    assert decision.decision_status == "reserved"
+    assert decision.delivered_at is None
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == decision.exposure_id)
+        .count()
+        == 0
+    )
 
 
 def test_insights_endpoint_primary_synthesis_preserves_source_cards_when_supported(
@@ -489,22 +497,82 @@ def test_insights_endpoint_primary_synthesis_preserves_source_cards_when_support
     assert "abandonment_pattern" in evidence_sources
     assert "time_of_day_bias" in evidence_sources
 
+    assert "render_id" not in payload
+    assert payload["exposure_id"]
+    snapshot = payload["render_snapshot"]
+    assert snapshot["schema_version"] == "analytics_insights_exposure_snapshot_v1"
+    assert snapshot["insight_count"] == len(payload["insights"])
+    assert snapshot["insight_ids"] == ids
+    assert "study tasks" not in json.dumps(snapshot)
+    assert "late-day execution" not in json.dumps(snapshot)
+
+    decision = (
+        db.query(ExposureDecisionEvent)
+        .filter(ExposureDecisionEvent.exposure_id == payload["exposure_id"])
+        .one()
+    )
+    assert decision.decision_status == "reserved"
+    assert decision.delivered_at is None
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == decision.exposure_id)
+        .count()
+        == 0
+    )
+    assert (
+        db.query(ExposureAckEvent)
+        .filter(ExposureAckEvent.exposure_id == decision.exposure_id)
+        .count()
+        == 0
+    )
+
+    other = User(email=f"insights-render-forgery-{uuid4()}@example.com")
+    db.add(other)
+    db.commit()
+    ack_payload = {
+        "surface_id": "analytics.insights",
+        "client_event_id": f"analytics.insights:{decision.exposure_id}",
+        "content_snapshot": snapshot,
+    }
+    forged_ack = client.post(
+        f"/v1/exposures/{decision.exposure_id}/ack/render",
+        headers=auth_headers(other.user_id),
+        json=ack_payload,
+    )
+    assert forged_ack.status_code == 404
+
+    first_ack = client.post(
+        f"/v1/exposures/{decision.exposure_id}/ack/render",
+        headers=auth_headers(user.user_id),
+        json=ack_payload,
+    )
+    second_ack = client.post(
+        f"/v1/exposures/{decision.exposure_id}/ack/render",
+        headers=auth_headers(user.user_id),
+        json=ack_payload,
+    )
+    assert first_ack.status_code == 200, first_ack.text
+    assert first_ack.json()["created"] is True
+    assert second_ack.status_code == 200, second_ack.text
+    assert second_ack.json()["created"] is False
+
+    db.refresh(decision)
+    assert decision.decision_status == "rendered"
+    assert decision.delivered_at is not None
     render = (
         db.query(ExposureRenderEvent)
-        .filter(ExposureRenderEvent.render_id == payload["render_id"])
+        .filter(ExposureRenderEvent.exposure_id == decision.exposure_id)
         .one()
     )
     assert "study tasks" not in render.content_snapshot
     assert "late-day execution" not in render.content_snapshot
     assert "_audit" not in render.content_snapshot
     assert "_facts" not in render.content_snapshot
-    snapshot = json.loads(render.content_snapshot)
-    assert snapshot["schema_version"] == "analytics_insights_exposure_snapshot_v1"
-    assert snapshot["insight_count"] == len(payload["insights"])
-    assert snapshot["insight_ids"] == ids
+    persisted_snapshot = json.loads(render.content_snapshot)
+    assert persisted_snapshot == snapshot
     audit_by_id = {
         envelope["insight_id"]: envelope
-        for envelope in snapshot["audit_envelopes"]
+        for envelope in persisted_snapshot["audit_envelopes"]
     }
     assert PRIMARY_SYNTHESIS_ID in audit_by_id
     primary_audit = audit_by_id[PRIMARY_SYNTHESIS_ID]
@@ -852,5 +920,12 @@ def test_insights_endpoint_rule11_hold_reopens_after_threshold(
         .first()
     )
     assert decision is not None
-    assert decision.decision_status == "rendered"
+    assert decision.decision_status == "reserved"
+    assert decision.delivered_at is None
+    assert (
+        db.query(ExposureRenderEvent)
+        .filter(ExposureRenderEvent.exposure_id == decision.exposure_id)
+        .count()
+        == 0
+    )
     assert decision.randomization_arm == "rule11_active"
