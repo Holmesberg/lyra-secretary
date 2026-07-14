@@ -118,6 +118,7 @@ function redactedLifecycle(row) {
     dismissed_at: row.dismissed_at ?? null,
     expired_at: row.expired_at ?? null,
     lost_unrendered_at: row.lost_unrendered_at ?? null,
+    last_transition_at: row.last_transition_at ?? null,
   };
 }
 
@@ -182,6 +183,10 @@ let result;
 let token = null;
 let page = null;
 let failureContext = null;
+let transitionTaskId = null;
+let transitionTimerOpen = false;
+let transitionTaskVoided = false;
+let transitionCleanup = { ok: true, task_id: null, timer_closed: true, task_voided: true };
 let cleanupProof = {
   ok: false,
   pending_before: [],
@@ -597,6 +602,123 @@ try {
     await waitForSuccessfulAck(id, "dismissed");
   }
 
+  await page.goto("about:blank");
+  const transitionStart = new Date(Date.now() + 60_000);
+  const transitionEnd = new Date(transitionStart.getTime() + 30 * 60_000);
+  const createdTask = await apiFetch(apiOrigin, token, "/v1/create", {
+    method: "POST",
+    body: JSON.stringify({
+      title: `DOGFOOD ${runId} supersede prediction`.slice(0, 120),
+      start: transitionStart.toISOString(),
+      end: transitionEnd.toISOString(),
+    }),
+  });
+  if (!createdTask.response.ok || !createdTask.body?.task_id) {
+    throw new Error(`transition task create failed: ${createdTask.response.status}`);
+  }
+  transitionTaskId = createdTask.body.task_id;
+  const startedTimer = await apiFetch(apiOrigin, token, "/v1/stopwatch/start", {
+    method: "POST",
+    body: JSON.stringify({
+      task_id: transitionTaskId,
+      pre_task_readiness: 3,
+    }),
+  });
+  if (!startedTimer.response.ok || !startedTimer.body?.session_id) {
+    throw new Error(`transition timer start failed: ${startedTimer.response.status}`);
+  }
+  transitionTimerOpen = true;
+  const supersededId = `${runId}-superseded`.slice(0, 64);
+  await push(token, {
+    notification_id: supersededId,
+    type: "pause_prediction",
+    task_id: transitionTaskId,
+    session_id: startedTimer.body.session_id,
+  });
+  await proveQueuedWithoutRender(token, [supersededId], "transition prediction");
+  const pausedTimer = await apiFetch(apiOrigin, token, "/v1/stopwatch/pause", {
+    method: "POST",
+    body: JSON.stringify({
+      pause_reason: "intentional_break",
+      pause_initiator: "self",
+    }),
+  });
+  if (!pausedTimer.response.ok) {
+    throw new Error(`transition timer pause failed: ${pausedTimer.response.status}`);
+  }
+  const pendingAfterPause = await apiFetch(
+    apiOrigin,
+    token,
+    "/v1/notifications/web/pending"
+  );
+  const pendingAfterPauseIds = new Set(
+    (pendingAfterPause.body?.notifications || []).map((row) => row.notification_id)
+  );
+  const supersededRow = await poll("superseded lifecycle export", async () => {
+    const rows = await exportedLifecycleRows(token, [supersededId]);
+    return rows.find((row) => row.status === "superseded") || null;
+  });
+  await page.goto(`${frontendOrigin}/pulse`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3_500);
+  const supersededToastCount = await page.locator(
+    `[data-testid="notification-toast"][data-toast-id=${JSON.stringify(supersededId)}]`
+  ).count();
+  addCheck(
+    "timer transition supersedes queued prediction before browser render",
+    !pendingAfterPauseIds.has(supersededId)
+      && supersededToastCount === 0
+      && !successfulAck(supersededId, "rendered")
+      && !supersededRow.rendered_at,
+    {
+      notification_id: supersededId,
+      pending_after_pause: pendingAfterPauseIds.has(supersededId),
+      mounted_toast_count: supersededToastCount,
+      rendered_ack: successfulAck(supersededId, "rendered"),
+      lifecycle: redactedLifecycle(supersededRow),
+    }
+  );
+  const resumedTimer = await apiFetch(apiOrigin, token, "/v1/stopwatch/resume", {
+    method: "POST",
+  });
+  if (!resumedTimer.response.ok) {
+    throw new Error(`transition timer resume failed: ${resumedTimer.response.status}`);
+  }
+  const stoppedTimer = await apiFetch(
+    apiOrigin,
+    token,
+    "/v1/stopwatch/stop?confirmed=true",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        post_task_reflection: 3,
+        task_completion_percentage: 80,
+      }),
+    }
+  );
+  if (!stoppedTimer.response.ok) {
+    throw new Error(`transition timer stop failed: ${stoppedTimer.response.status}`);
+  }
+  transitionTimerOpen = false;
+  const voidedTask = await apiFetch(
+    apiOrigin,
+    token,
+    `/v1/tasks/${transitionTaskId}/void`,
+    {
+      method: "POST",
+      body: JSON.stringify({ voided_reason: "test_contamination" }),
+    }
+  );
+  if (!voidedTask.response.ok) {
+    throw new Error(`transition task void failed: ${voidedTask.response.status}`);
+  }
+  transitionTaskVoided = true;
+  transitionCleanup = {
+    ok: true,
+    task_id: transitionTaskId,
+    timer_closed: true,
+    task_voided: true,
+  };
+
   const finalLifecycleRows = await exportedLifecycleRows(
     token,
     [...syntheticNotificationIds]
@@ -608,6 +730,7 @@ try {
     [actionId, "acted"],
     [expiryId, "expired"],
     [unsupportedId, "lost_unrendered"],
+    [supersededId, "superseded"],
     [duplicateSplit.rendered_id, "dismissed"],
     [duplicateSplit.lost_unrendered_id, "lost_unrendered"],
     ...capacityIds.map((id) => [id, "dismissed"]),
@@ -617,6 +740,9 @@ try {
     if (!row || row.status !== status) return false;
     if (status === "lost_unrendered") {
       return Boolean(row.lost_unrendered_at) && !row.rendered_at;
+    }
+    if (status === "superseded") {
+      return Boolean(row.last_transition_at) && !row.rendered_at;
     }
     const terminalField = `${status}_at`;
     return Boolean(row.rendered_at && row[terminalField]);
@@ -692,6 +818,46 @@ try {
     ack_request_proofs: ackRequestProofs,
   };
 } finally {
+  if (token && transitionTaskId && (!transitionTaskVoided || transitionTimerOpen)) {
+    try {
+      if (transitionTimerOpen) {
+        await apiFetch(apiOrigin, token, "/v1/stopwatch/stop?confirmed=true", {
+          method: "POST",
+          body: JSON.stringify({
+            post_task_reflection: 3,
+            task_completion_percentage: 80,
+          }),
+        });
+        transitionTimerOpen = false;
+      }
+      if (!transitionTaskVoided) {
+        const voidedTask = await apiFetch(
+          apiOrigin,
+          token,
+          `/v1/tasks/${transitionTaskId}/void`,
+          {
+            method: "POST",
+            body: JSON.stringify({ voided_reason: "test_contamination" }),
+          }
+        );
+        transitionTaskVoided = voidedTask.response.ok;
+      }
+      transitionCleanup = {
+        ok: !transitionTimerOpen && transitionTaskVoided,
+        task_id: transitionTaskId,
+        timer_closed: !transitionTimerOpen,
+        task_voided: transitionTaskVoided,
+      };
+    } catch (error) {
+      transitionCleanup = {
+        ok: false,
+        task_id: transitionTaskId,
+        timer_closed: !transitionTimerOpen,
+        task_voided: transitionTaskVoided,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
   if (token) {
     try {
       const pendingBefore = await syntheticPendingIds(token);
@@ -727,6 +893,8 @@ try {
     }
   }
   await browser.close();
+  cleanupProof.transition_task = transitionCleanup;
+  cleanupProof.ok = Boolean(cleanupProof.ok && transitionCleanup.ok);
   result.cleanup = cleanupProof;
   result.issues = issues;
   result.ok = Boolean(result.ok && cleanupProof.ok && issues.length === 0);
