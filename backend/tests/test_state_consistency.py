@@ -50,8 +50,7 @@ def state_env(db):
         from app.utils.redis_client import RedisClient
         rc = RedisClient()
         for uid in ("1", str(USER_ID), "user_primary"):
-            rc.clear_active_stopwatch(uid)
-            rc.client.delete(f"stopwatch:paused:{uid}")
+            rc.purge_user_runtime_state(uid)
     except Exception:
         pass
 
@@ -80,6 +79,11 @@ def state_env(db):
 
     yield db
     set_current_user_id(None)
+    try:
+        from app.utils.redis_client import RedisClient
+        RedisClient().purge_user_runtime_state(USER_ID)
+    except Exception:
+        pass
 
 
 def _h() -> dict:

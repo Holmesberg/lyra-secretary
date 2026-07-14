@@ -55,8 +55,7 @@ def _clean_env(db):
     if _redis_available():
         from app.utils.redis_client import RedisClient
         rc = RedisClient()
-        rc.clear_active_stopwatch(str(USER_ID))
-        rc.clear_pause_state(str(USER_ID))
+        rc.purge_user_runtime_state(USER_ID)
 
     wipe = TestingSession()
     try:
@@ -86,8 +85,7 @@ def _clean_env(db):
     if _redis_available():
         from app.utils.redis_client import RedisClient
         rc = RedisClient()
-        rc.clear_active_stopwatch(str(USER_ID))
-        rc.clear_pause_state(str(USER_ID))
+        rc.purge_user_runtime_state(USER_ID)
 
 
 def _make_task(db, *, title="task", state=TaskState.PLANNED) -> Task:
