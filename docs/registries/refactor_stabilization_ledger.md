@@ -22877,3 +22877,55 @@ Rollback and next boundary:
   timer, voided synthetic task, empty pending queue, and zero teardown residue.
 - Revert `39f407e` and `dc3046f` to remove this verifier/CI correction. Product
   behavior, public runtime, data, and prediction policy are unchanged.
+
+### Wave 6N exact-head proof and founder pause replay
+
+- Dependency-free self-test repair `697de34` moved Playwright loading behind
+  the lifecycle harness's `--self-test` exit. Exact-head CI run `29303164134`
+  passed backend, frontend build/typecheck, topology, and every S1c gate at
+  `697de34f0dfc5391f9c1e51f740a4be00b14d686`; issue `#277` then closed with
+  its negative classifier proof and mounted local-current artifact.
+- The frozen founder replay used the read-only operator cookie, canonical
+  hosted-public preflight, and an aggregate-only reserved artifact at
+  `tmp/founder-pause-replay/2026-07-14T03-22-00Z.json`. The export contained
+  84 eligible sessions across 47 active-use days, sufficient to attempt
+  calibration without row-level inspection or product writes.
+- None of the 15 frozen confidence/lead configurations met the predeclared
+  median one-to-two opportunities per active-use-day constraint. All produced
+  a median of zero. The evaluator therefore returned `inconclusive`, selected
+  no configuration, did not inspect the chronological holdout, and kept
+  `visible_runtime_enabled=false`.
+- This result preserves pause policy v1. It does not authorize retuning the
+  opportunity definition, changing thresholds after inspection, opening the
+  holdout, or promoting a founder setting to cohort policy. Revert/delete only
+  the generated aggregate artifact to remove this evidence; runtime and data
+  were unchanged.
+
+### Wave 6N and replay macro checkpoint
+
+- Canonical preflight proved the exact-head isolated disposable runtime on
+  ports `3018/8001`, Redis DB 15, and
+  `.next-local-current-wave6nmacro`. The real Holmesberg cookie resolved as
+  non-operator, the pending queue and `DOGFOOD W6NMACRO` prefix were clean,
+  Pulse mounted without page errors, and frontend/backend build IDs matched
+  `697de34f0dfc5391f9c1e51f740a4be00b14d686`.
+- `tmp/browser-product-loop/wave6nmacro-697de34/result.json` passed all 204
+  checks with zero failures or warnings. It covered capture, persistent task
+  estimate Use/Keep actions, deadline binding, Pressure Map preview/commit,
+  stopwatch and recovery paths, notification lifecycle, export evidence, and
+  cleanup of 17 tasks, 12 deadlines, and three notifications.
+- A separate exact-head shared-data read-only runtime proved the operator
+  cookie as operator and Holmesberg as non-operator with empty pending queues.
+  Operator desktop/mobile stress at
+  `tmp/operator-readonly-stress-2026-07-14T03-29-02-345Z/result.json` reported
+  zero count, attribution, route, or dashboard snapshot diffs; no issues or
+  warnings; `implementation_green=true`; and
+  `exposure_without_render_count=0`. Cohort readiness remained yellow only for
+  explicit longitudinal evidence gaps.
+- Manifest-owned teardown removed the disposable database, Redis residue, and
+  both isolated frontend artifacts and left the proof ports closed. Public
+  runtime processes, artifacts, and data were not changed.
+- Wave 6 automated implementation evidence is now green while founder
+  product-loop fit remains `not_tested` by voluntary real use. Under the
+  reality gate, no structural Wave 7 extraction or visible pause-policy v2 is
+  authorized until real founder cycles provide the next named product need.
