@@ -30,7 +30,7 @@ import time
 from sqlalchemy.exc import OperationalError
 
 from app.db.session import SessionLocal, engine
-from app.db.models import PausePredictionLog, Task, TaskState, User
+from app.db.models import PausePredictionLog, StopwatchSession, Task, TaskState, User
 from app.db.scoping import set_current_user_id
 from app.services.notification_queue import enqueue_user_notification
 from app.services.operator_notifier import notify_operator
@@ -187,6 +187,22 @@ def _run_for_one_user(db, user: User):
     if active_task is None:
         return
 
+    active_session = _resolve_active_session(db, user, active_task)
+    if active_session is None:
+        return
+
+    already_fired_for_session = (
+        db.query(PausePredictionLog.firing_id)
+        .filter(
+            PausePredictionLog.user_id == user.user_id,
+            PausePredictionLog.active_task_id == active_task.task_id,
+            PausePredictionLog.fired_at >= active_session.start_time_utc,
+        )
+        .first()
+    )
+    if already_fired_for_session is not None:
+        return
+
     try:
         prediction = PausePredictor(db).predict(
             user_id=user.user_id,
@@ -213,7 +229,7 @@ def _run_for_one_user(db, user: User):
         confidence=prediction.confidence,
         lead_minutes=prediction.lead_minutes,
         sample_size=prediction.sample_size,
-        active_task_id=prediction.active_task_id,
+        active_task_id=prediction.active_task_id or active_task.task_id,
     )
     db.add(row)
     try:
@@ -274,6 +290,22 @@ def _resolve_active_task(db, user: User):
             Task.state == TaskState.EXECUTING,
             Task.voided_at.is_(None),
         )
+        .first()
+    )
+
+
+def _resolve_active_session(db, user: User, task: Task):
+    """Return the canonical open session required for live pause delivery."""
+    return (
+        db.query(StopwatchSession)
+        .filter(
+            StopwatchSession.user_id == user.user_id,
+            StopwatchSession.task_id == task.task_id,
+            StopwatchSession.end_time_utc.is_(None),
+            StopwatchSession.auto_closed.is_(False),
+            StopwatchSession.data_quality_flag.is_(None),
+        )
+        .order_by(StopwatchSession.start_time_utc.desc())
         .first()
     )
 
