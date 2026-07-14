@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import text
 
 from app.db.models import (
+    NotificationLifecycleEvent,
     PauseEvent,
     PausePredictionLog,
     ResumePredictionLog,
@@ -45,6 +46,7 @@ def _stable_worker_clock(monkeypatch):
 def _clean_slate(db):
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM notification_lifecycle_event"))
     db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
@@ -55,6 +57,7 @@ def _clean_slate(db):
     yield
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM notification_lifecycle_event"))
     db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
@@ -187,6 +190,39 @@ def test_resume_prediction_firing_writes_log_and_queues_notification(db):
     decision_kwargs = patched["create_output_surface_decision"].call_args.kwargs
     assert decision_kwargs["decision_status"] == "queued"
     assert decision_kwargs["delivered_at"] is None
+
+
+def test_dismissed_resume_family_silences_current_session(db):
+    user = _make_user(db)
+    task, session, _pause = _make_paused_task_with_open_pause(db, user.user_id)
+    db.add(
+        NotificationLifecycleEvent(
+            user_id=user.user_id,
+            notification_id="dismissed-resume-current-session",
+            channel="web",
+            notification_type="resume_prediction",
+            status="dismissed",
+            task_id=task.task_id,
+            session_id=session.session_id,
+            queued_at=TEST_NOW_UTC,
+            rendered_at=TEST_NOW_UTC,
+            dismissed_at=TEST_NOW_UTC,
+            last_transition_at=TEST_NOW_UTC,
+        )
+    )
+    db.commit()
+    set_current_user_id(user.user_id)
+
+    with patch("app.workers.jobs.resume_prediction.ResumePredictor") as mock_cls, \
+         _patch_delivery() as patched:
+        mock_cls.return_value.predict.return_value = _prediction(
+            user.user_id, session, task
+        )
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert patched["enqueue_user_notification"].call_count == 0
+    assert db.query(ResumePredictionLog).count() == 0
 
 
 def test_quiet_hours_skip_resume_prediction_before_any_write(db):

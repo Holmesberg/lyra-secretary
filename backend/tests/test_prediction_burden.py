@@ -3,11 +3,12 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.models import PausePredictionLog, User
+from app.db.models import NotificationLifecycleEvent, PausePredictionLog, User
 from app.db.scoping import set_current_user_id
 from app.services.prediction_burden import (
     acquire_prediction_spacing_window,
     is_within_prediction_quiet_hours,
+    prediction_family_dismissed_for_session,
 )
 
 
@@ -125,6 +126,79 @@ def test_prediction_spacing_allows_exact_boundary_and_other_user(db):
         set_current_user_id(None)
         db.query(PausePredictionLog).filter(
             PausePredictionLog.user_id.in_([user_id, other_user_id])
+        ).delete(synchronize_session=False)
+        db.query(User).filter(User.user_id == user_id).delete(
+            synchronize_session=False
+        )
+        db.commit()
+
+
+def test_prediction_dismissal_is_user_family_and_session_scoped(db):
+    user_id = 9914
+    now = datetime(2026, 7, 15, 12, 0)
+    set_current_user_id(None)
+    db.add(User(user_id=user_id, email="dismissal-9914@test", timezone="UTC"))
+    db.add(
+        NotificationLifecycleEvent(
+            user_id=user_id,
+            notification_id="dismissed-resume-9914",
+            channel="web",
+            notification_type="resume_prediction",
+            status="dismissed",
+            session_id="session-a",
+            queued_at=now,
+            rendered_at=now,
+            dismissed_at=now,
+            last_transition_at=now,
+        )
+    )
+    db.add(
+        NotificationLifecycleEvent(
+            user_id=user_id,
+            notification_id="expired-pause-9914",
+            channel="web",
+            notification_type="pause_prediction",
+            status="expired",
+            session_id="session-a",
+            queued_at=now,
+            rendered_at=now,
+            expired_at=now,
+            last_transition_at=now,
+        )
+    )
+    db.commit()
+    set_current_user_id(user_id)
+
+    try:
+        assert prediction_family_dismissed_for_session(
+            db,
+            user_id=user_id,
+            family="resume_prediction",
+            session_id="session-a",
+        )
+        assert not prediction_family_dismissed_for_session(
+            db,
+            user_id=user_id,
+            family="pause_prediction",
+            session_id="session-a",
+        )
+        assert not prediction_family_dismissed_for_session(
+            db,
+            user_id=user_id,
+            family="resume_prediction",
+            session_id="session-b",
+        )
+        assert not prediction_family_dismissed_for_session(
+            db,
+            user_id=user_id + 1,
+            family="resume_prediction",
+            session_id="session-a",
+        )
+    finally:
+        db.rollback()
+        set_current_user_id(None)
+        db.query(NotificationLifecycleEvent).filter(
+            NotificationLifecycleEvent.user_id == user_id
         ).delete(synchronize_session=False)
         db.query(User).filter(User.user_id == user_id).delete(
             synchronize_session=False

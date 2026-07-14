@@ -28,6 +28,7 @@ from sqlalchemy import text
 from app.db.models import (
     ExposureDecisionEvent,
     ExposureRenderEvent,
+    NotificationLifecycleEvent,
     PausePredictionLog,
     ResumePredictionLog,
     StopwatchSession,
@@ -66,6 +67,7 @@ def _clean_slate(db):
     db.execute(text("DELETE FROM exposure_ack_event"))
     db.execute(text("DELETE FROM exposure_render_event"))
     db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM notification_lifecycle_event"))
     db.execute(text("DELETE FROM exposure_decision_event"))
     db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_prediction_log"))
@@ -80,6 +82,7 @@ def _clean_slate(db):
     db.execute(text("DELETE FROM exposure_ack_event"))
     db.execute(text("DELETE FROM exposure_render_event"))
     db.execute(text("DELETE FROM suppression_event"))
+    db.execute(text("DELETE FROM notification_lifecycle_event"))
     db.execute(text("DELETE FROM exposure_decision_event"))
     db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_prediction_log"))
@@ -168,7 +171,10 @@ def _canned_prediction(user_id: int = USER_ID, mechanism: str = "clock_anchor") 
 
 def test_firing_writes_log_row_and_queues_notification(db, user):
     """Happy path: predictor returns -> one row + one queued notification."""
-    _make_executing_task(db)
+    task = _make_executing_task(db)
+    session = db.query(StopwatchSession).filter(
+        StopwatchSession.task_id == task.task_id
+    ).one()
     canned = _canned_prediction()
 
     with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
@@ -195,6 +201,7 @@ def test_firing_writes_log_row_and_queues_notification(db, user):
     assert call.args[1]["type"] == "pause_prediction"
     assert call.args[1]["firing_id"] == row.firing_id
     assert call.args[1]["surface_id"] == "worker.pause_prediction"
+    assert call.args[1]["session_id"] == session.session_id
     assert call.args[1]["exposure_id"]
     assert call.kwargs["db"] is db
     assert call.kwargs["surface_id"] == "worker.pause_prediction"
@@ -208,6 +215,38 @@ def test_firing_writes_log_row_and_queues_notification(db, user):
     assert decision.decision_status == "queued"
     assert decision.delivered_at is None
     assert db.query(ExposureRenderEvent).count() == 0
+
+
+def test_dismissed_pause_family_silences_current_session(db, user):
+    task = _make_executing_task(db)
+    session = db.query(StopwatchSession).filter(
+        StopwatchSession.task_id == task.task_id
+    ).one()
+    db.add(
+        NotificationLifecycleEvent(
+            user_id=user.user_id,
+            notification_id="dismissed-pause-current-session",
+            channel="web",
+            notification_type="pause_prediction",
+            status="dismissed",
+            session_id=session.session_id,
+            queued_at=TEST_NOW_UTC,
+            rendered_at=TEST_NOW_UTC,
+            dismissed_at=TEST_NOW_UTC,
+            last_transition_at=TEST_NOW_UTC,
+        )
+    )
+    db.commit()
+
+    with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
+         patch("app.workers.jobs.pause_prediction.notify_operator"):
+        mock_cls.return_value.predict.return_value = _canned_prediction()
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert mock_enqueue.call_count == 0
+    assert db.query(PausePredictionLog).count() == 0
 
 
 def test_quiet_hours_skip_pause_prediction_before_any_write(db, user):
