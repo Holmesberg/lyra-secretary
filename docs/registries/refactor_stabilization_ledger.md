@@ -22621,3 +22621,37 @@ Rollback and remaining boundary:
 - The per-session caps now match the approved burden contract. Quiet hours,
   30-minute cross-family spacing, dismissal-to-session silence, and immediate
   transition invalidation remain separate named seams; v2 remains disabled.
+
+## 2026-07-14 - Wave 6K User-Local Prediction Quiet Hours
+
+Present burden mismatch and bounded behavior change:
+
+- Issue `#272` recorded that both shipped prediction workers could evaluate,
+  persist a firing, and enqueue a prompt from 22:00 through 07:59 despite the
+  approved burden contract. The database already owns an IANA timezone per
+  user, so the fix required no schema or account-setting change.
+- Product commit `b93c29f` adds one pure shared quiet-hours predicate and gates
+  pause and resume before predictor invocation or any prediction, exposure,
+  queue, or operator-alert write. Naive runtime timestamps are interpreted as
+  UTC and converted through `User.timezone`; missing or invalid timezone data
+  fails closed with a diagnostic rather than delivering a prompt.
+- Predictor thresholds, pause-policy v1 eligibility outside quiet hours,
+  resume eligibility, cooldowns, session caps, notification lifecycle
+  authority, and the disabled v2 status remain unchanged.
+
+Focused proof and rollback:
+
+- Test commit `f3fa413` freezes the worker clocks and proves the exact 22:00
+  and 08:00 local boundaries, cross-timezone conversion, aware/naive UTC
+  parity, invalid-timezone refusal, zero quiet-hour writes, and unchanged
+  daytime delivery. All 34 shared-burden and pause/resume worker tests passed.
+- This scheduler-only gate has no honest browser trigger. Its focused proof is
+  the affected worker and database lifecycle boundary; mounted-browser and
+  operator read-only proof remain scheduled for the related burden
+  macro-checkpoint rather than being used to simulate scheduler time.
+- Revert `b93c29f` and `f3fa413` to restore the prior behavior. No migration,
+  historical-row rewrite, production repair, or public runtime action is
+  involved.
+- Quiet hours are now enforced. Cross-family spacing,
+  dismissal-to-session silence, and immediate transition invalidation remain
+  separate named seams; v2 remains disabled.

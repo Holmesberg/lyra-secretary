@@ -133,8 +133,8 @@ coverage.
 | --- | --- | --- | --- | --- |
 | Pre-task reminders | yes | operator-owned full text; non-operator redacted metadata only | per task, 2h | Candidate scan is upcoming-task scoped; user-facing content stays in the authenticated queue. |
 | Timer overflow | yes | operator-owned full text; non-operator redacted metadata only | per session, 24h | User-facing content stays in the authenticated queue. |
-| Pause prediction | yes | operator-owned full text; non-operator redacted metadata only | one per canonical open session; 10m fallback cooldown | Candidate scan requires an open, non-auto-closed, non-DQ session; raw task ids/titles stay out of the shared bot. |
-| Resume prediction | yes | operator-owned full text; non-operator redacted metadata only | 60m; maximum two per paused session | Raw task title and ids stay in the per-user queue; the operator mirror sees redacted metadata only. |
+| Pause prediction | yes | operator-owned full text; non-operator redacted metadata only | one per canonical open session; 10m fallback cooldown; none 22:00-07:59 user-local | Candidate scan requires an open, non-auto-closed, non-DQ session. Quiet hours use the persisted user timezone and invalid timezone data fails closed; raw task ids/titles stay out of the shared bot. |
+| Resume prediction | yes | operator-owned full text; non-operator redacted metadata only | 60m; maximum two per paused session; none 22:00-07:59 user-local | Quiet hours use the persisted user timezone and invalid timezone data fails closed. Raw task title and ids stay in the per-user queue; the operator mirror sees redacted metadata only. |
 | In-app toasts/modals | n/a | redacted metadata only | no content mirror | `stopwatch.micro_mirror`, `stopwatch.calibration_nudge`, `task.creation_nudge`, and similar modal/toast surfaces mirror render metadata only. Dashboard pages/cards do not mirror. |
 | Scheduler health | no | yes | 30m | Job error, missed run, and max-instance events. |
 | Per-user job exceptions | no | yes | 30m | Reports job/user id and exception class only. |
