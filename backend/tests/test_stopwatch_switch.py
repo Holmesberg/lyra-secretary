@@ -550,6 +550,97 @@ def test_switch_redis_swapped_atomically(db):
     assert rc.get_pause_state(str(USER_ID)) is None
 
 
+@needs_redis
+def test_switch_recovers_when_committed_redis_publication_fails(db, monkeypatch):
+    """Committed switch truth survives a failed Redis active-pointer swap."""
+    source = _make_task(db, title="fault-source", state=TaskState.EXECUTING)
+    source_session = _make_open_session(db, source, start_offset_min=20)
+    target = _make_task(db, title="fault-target", state=TaskState.PAUSED)
+    target_paused_at = now_utc() - timedelta(minutes=12)
+    target_session = _make_open_session(
+        db,
+        target,
+        paused_at=target_paused_at,
+        start_offset_min=45,
+    )
+    _make_pause_event(db, target_session, target_paused_at)
+    _set_redis_active(
+        source_session.session_id,
+        source.task_id,
+        source.title,
+        source_session.start_time_utc.isoformat(),
+        paused=False,
+    )
+
+    mgr = StopwatchManager(db)
+    original_activate = mgr.redis.activate_stopwatch
+
+    def fail_activate(**_kwargs):
+        raise RuntimeError("injected Redis switch publication failure")
+
+    monkeypatch.setattr(mgr.redis, "activate_stopwatch", fail_activate)
+    result = mgr.switch_to_task(target.task_id)
+
+    assert result["switched"] is True
+    assert result["from_task_id"] == source.task_id
+    assert result["to_task_id"] == target.task_id
+
+    db.refresh(source)
+    db.refresh(target)
+    db.refresh(source_session)
+    db.refresh(target_session)
+    assert source.state == TaskState.PAUSED
+    assert source_session.paused_at_utc is not None
+    assert target.state == TaskState.EXECUTING
+    assert target.pause_count == 1
+    assert target_session.paused_at_utc is None
+
+    source_events = (
+        db.query(PauseEvent)
+        .filter(PauseEvent.session_id == source_session.session_id)
+        .all()
+    )
+    target_events = (
+        db.query(PauseEvent)
+        .filter(PauseEvent.session_id == target_session.session_id)
+        .all()
+    )
+    assert len(source_events) == 1
+    assert source_events[0].resumed_at_utc is None
+    assert len(target_events) == 1
+    assert target_events[0].resumed_at_utc is not None
+
+    from app.utils.redis_client import RedisClient
+    rc = RedisClient()
+    stale_active = rc.get_active_stopwatch(str(USER_ID))
+    assert stale_active["task_id"] == source.task_id
+    assert rc.get_pause_state(str(USER_ID)) is None
+
+    monkeypatch.setattr(mgr.redis, "activate_stopwatch", original_activate)
+    status = mgr.get_status()
+    assert status["active"] is True
+    assert status["task_id"] == target.task_id
+    assert status["session_id"] == target_session.session_id
+    assert status["paused"] is False
+    assert any(
+        other["task_id"] == source.task_id
+        for other in status["paused_others"]
+    )
+    recovered_active = rc.get_active_stopwatch(str(USER_ID))
+    assert recovered_active["task_id"] == target.task_id
+    assert recovered_active["session_id"] == target_session.session_id
+
+    with pytest.raises(ValueError, match="must be PAUSED"):
+        mgr.switch_to_task(target.task_id)
+    assert target.pause_count == 1
+    assert db.query(PauseEvent).filter(
+        PauseEvent.session_id == source_session.session_id
+    ).count() == 1
+    assert db.query(PauseEvent).filter(
+        PauseEvent.session_id == target_session.session_id
+    ).count() == 1
+
+
 # ---------------------------------------------------------------------------
 # get_paused_others helper
 # ---------------------------------------------------------------------------
