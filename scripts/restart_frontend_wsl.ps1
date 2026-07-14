@@ -81,7 +81,10 @@ if [ "`$NO_BUILD" != '1' ]; then
   echo "== building public topology into staging artifact `$STAGING_NEXT_DIR =="
   rm -rf "`$STAGING_NEXT_DIR"
   NEXT_DIST_DIR="`$STAGING_NEXT_DIR" npm run build:public
-  POST_BUILD_UNTRACKED="`$(git -C "`$FRONTEND_DIR/.." ls-files --others --exclude-standard)"
+  POST_BUILD_UNTRACKED="`$(
+    git -C "`$FRONTEND_DIR/.." ls-files --others --exclude-standard |
+      awk -v staging_prefix="frontend/`$STAGING_NEXT_DIR/" 'index(`$0, staging_prefix) != 1'
+  )"
   if ! git -C "`$FRONTEND_DIR/.." diff --ignore-space-at-eol --quiet || \
      ! git -C "`$FRONTEND_DIR/.." diff --cached --quiet || \
      [ -n "`$POST_BUILD_UNTRACKED" ]; then

@@ -140,6 +140,13 @@ assert(
 );
 
 assert(
+  /awk -v staging_prefix="frontend\/\`\$STAGING_NEXT_DIR\/" 'index\(\`\$0, staging_prefix\) != 1'/.test(
+    script
+  ),
+  "post-build guard must exclude only the active script-owned staging artifact"
+);
+
+assert(
   script.includes('$bashScript = $bashScript.Replace("`r`n", "`n")'),
   "restart script must normalize generated Bash payloads to LF before WSL execution"
 );
