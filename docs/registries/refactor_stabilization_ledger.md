@@ -22853,3 +22853,27 @@ Rollback and next boundary:
 - This is the first seam after the Wave 6K-M macro-checkpoint. Full S1c and the
   complete product loop are therefore not repeated here; exact-head CI is
   required after push, and its run is recorded in the issue closure.
+
+### Wave 6N topology-trust correction
+
+- Issue `#277` identified that the lifecycle harness copied the frontend
+  endpoint's raw `mixed` class into its evidence even after the canonical
+  manifest-backed verifier proved `local-current`. Local-current intentionally
+  uses explicit loopback origins outside the two static topology records, so
+  frontend/backend endpoints report `mixed`/`unknown` while the canonical
+  verifier derives the trusted class from exact origins.
+- Verifier commit `39f407e` now uses the canonical topology endpoint on the
+  backend and derives local-current trust only when frontend, compiled API,
+  NextAuth, and backend API origins match the declared loopback origins. Public
+  and static-local proofs still require both endpoints to be verified and to
+  report the declared class.
+- Negative self-test proves wrong API origin, mixed public topology, and a
+  non-loopback local-current declaration all fail. CI commit `dc3046f` promotes
+  that trust test into both local S1c and GitHub Actions.
+- Positive focused artifact
+  `tmp/browser-notification-lifecycle/2026-07-14T03-14-07-813Z/result.json`
+  passed with `topology_class=local-current`, exact frontend/backend build IDs,
+  explicit raw endpoint classes, all lifecycle checks green, no issues, closed
+  timer, voided synthetic task, empty pending queue, and zero teardown residue.
+- Revert `39f407e` and `dc3046f` to remove this verifier/CI correction. Product
+  behavior, public runtime, data, and prediction policy are unchanged.
