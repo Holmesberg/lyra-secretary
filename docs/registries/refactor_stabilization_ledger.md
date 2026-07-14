@@ -22800,3 +22800,56 @@ Rollback and next boundary:
   loop, browser lifecycle, multi-account, operator read-only, visual, and
   cleanup proof. Immediate task/session transition invalidation remains the
   next bounded burden seam; v2 remains disabled.
+
+## 2026-07-14 - Wave 6N Prediction Transition Invalidation
+
+Present lifecycle mismatch and bounded behavior change:
+
+- Issue `#276` recorded that queued or reserved pause/resume predictions could
+  outlive the stopwatch session state that made them relevant. Redis residue
+  could therefore deliver a pause prompt after pause/stop or a resume prompt
+  after resume/stop/switch.
+- Runtime commit `8301eaf` adds the terminal `superseded` lifecycle state.
+  Canonical pause, resume, start-over-interruption, switch, stop, and explicit
+  stale-pause resolution now terminalize only queued/reserved prediction rows
+  for the exact user, session, and family after stopwatch truth commits.
+- Durable lifecycle state remains fail-closed if Redis pruning fails: pending
+  delivery filters terminal rows before reservation, so Redis residue cannot
+  fabricate a later render. Existing rendered, acted, dismissed, expired, and
+  lost-unrendered history is preserved.
+- Prediction thresholds, v1/v2 policy, burden caps, timer mutation authority,
+  browser render authority, historical rows, and schemas are unchanged. The
+  operator snapshot reports `web_superseded` as a read-only diagnostic.
+
+Focused proof, browser evidence, and cleanup:
+
+- Test commit `c53efa4` proves exact user/family/session scoping, rendered-row
+  preservation, queued and reserved termination, Redis-prune failure, and the
+  rule that lifecycle or queue-side-effect failure cannot turn committed timer
+  truth into an API failure. The focused notification, stopwatch state,
+  switch, stale-resolution, and operator cohort passed all 58 tests.
+- Verifier commit `e3929fd` extends the existing lifecycle harness rather than
+  adding another runner. Canonical manifest-backed preflight proved an isolated
+  local-current runtime, real Holmesberg cookie/non-operator role, empty
+  pending queue, bounded export, disposable data, mounted Pulse, and owned
+  ports/artifacts before writes.
+- `tmp/browser-notification-lifecycle/2026-07-14T03-05-37-396Z/result.json`
+  passed. A real disposable timer received a queued pause prediction; canonical
+  pause changed it to `superseded`; the pending endpoint omitted it; mounted
+  Pulse showed zero matching toasts and sent no render ACK; export retained the
+  exact unrendered terminal row. The timer closed, the synthetic task was
+  voided, all pending IDs cleared, and teardown left ports `3018/8001` closed,
+  Redis DB 15 empty, and no disposable SQLite or isolated Next artifact.
+- Issue `#277` separately records that the lifecycle harness's nested topology
+  summary says `mixed` after the canonical manifest-backed verifier proves
+  `local-current`. The canonical preflight passed before mutation, so this did
+  not block `#276`; the classifier mismatch remains out of this product seam.
+
+Rollback and next boundary:
+
+- Revert `8301eaf`, `c53efa4`, and `e3929fd` to restore prior queue behavior and
+  proof coverage. No migration, public runtime action, production mutation,
+  predictor-policy change, or research-row rewrite is involved.
+- This is the first seam after the Wave 6K-M macro-checkpoint. Full S1c and the
+  complete product loop are therefore not repeated here; exact-head CI is
+  required after push, and its run is recorded in the issue closure.
