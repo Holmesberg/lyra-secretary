@@ -354,7 +354,10 @@ def _count_exposure_rows(model, exposure_id: str) -> int:
         db.close()
 
 
-def test_delete_retention_mode_purges_modern_auxiliary_rows(client):
+def test_delete_retention_mode_purges_modern_auxiliary_rows(
+    client,
+    account_delete_runtime_purge_ok,
+):
     email = "delete-retain-modern-aux@example.com"
     ids = _seed_user_with_modern_auxiliary_rows(email)
     user_id = int(ids["user_id"])
@@ -367,6 +370,7 @@ def test_delete_retention_mode_purges_modern_auxiliary_rows(client):
     )
 
     assert resp.status_code == 200, resp.text
+    assert account_delete_runtime_purge_ok == [user_id]
     assert _count_user_rows(User, user_id) == 0
 
     db = TestingSession()
@@ -476,7 +480,10 @@ def test_export_registry_includes_user_owned_sections_and_redacts_secrets(client
     assert "authtoken=" not in encoded
 
 
-def test_delete_hard_mode_purges_modern_auxiliary_rows(client):
+def test_delete_hard_mode_purges_modern_auxiliary_rows(
+    client,
+    account_delete_runtime_purge_ok,
+):
     email = "delete-hard-modern-aux@example.com"
     ids = _seed_user_with_modern_auxiliary_rows(email)
     user_id = int(ids["user_id"])
@@ -489,6 +496,7 @@ def test_delete_hard_mode_purges_modern_auxiliary_rows(client):
     )
 
     assert resp.status_code == 200, resp.text
+    assert account_delete_runtime_purge_ok == [user_id]
     for model in (
         User,
         Task,
