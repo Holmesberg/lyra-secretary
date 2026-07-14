@@ -38,6 +38,7 @@ from app.services.output_surfaces import (
     create_output_surface_decision,
     emit_surface_suppression,
 )
+from app.services.prediction_burden import is_within_prediction_quiet_hours
 from app.services.pause_predictor import PausePredictor
 from app.utils.redis_client import RedisClient
 from app.utils.time_utils import now_utc
@@ -162,6 +163,18 @@ def _load_active_user_ids() -> list[int]:
 
 def _run_for_one_user(db, user: User):
     now = now_utc()
+
+    try:
+        if is_within_prediction_quiet_hours(now, user.timezone):
+            return
+    except ValueError as exc:
+        logger.warning(
+            "pause_prediction: invalid timezone for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
+        return
 
     # Cooldown: skip if we already fired recently for this user.
     recent = (

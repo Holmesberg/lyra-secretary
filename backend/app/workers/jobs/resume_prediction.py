@@ -28,6 +28,7 @@ from app.services.output_surfaces import (
     create_output_surface_decision,
     emit_surface_suppression,
 )
+from app.services.prediction_burden import is_within_prediction_quiet_hours
 from app.services.resume_predictor import (
     COOLDOWN_MINUTES,
     MAX_FIRES_PER_SESSION,
@@ -45,6 +46,18 @@ def run_resume_prediction():
 
 def _run_for_one_user(db, user: User):
     now = now_utc()
+
+    try:
+        if is_within_prediction_quiet_hours(now, user.timezone):
+            return
+    except ValueError as exc:
+        logger.warning(
+            "resume_prediction: invalid timezone for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
+        return
 
     # Find any active PAUSED tasks for the user.
     paused_tasks = (
