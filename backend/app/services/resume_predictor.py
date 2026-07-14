@@ -56,11 +56,12 @@ LOOKBACK_DAYS = 28
 # matches the operator's stated tolerance ("not even an hour" — they
 # said hourly is fine for now).
 COOLDOWN_MINUTES = 60
-# Per-session max-fire cap — after 3 nudges the user has clearly
-# decided not to engage with this session right now. Stops pinging
+# Per-session max-fire cap. Two spaced prompts are enough to offer recovery
+# without turning a paused session into an hourly interruption source. Stops
+# pinging
 # instead of nagging hourly until stale_session_recovery (12h) closes
-# the session. Operator decision 2026-05-01 morning.
-MAX_FIRES_PER_SESSION = 3
+# the session. The Wave 6 burden contract tightened the historical cap of 3.
+MAX_FIRES_PER_SESSION = 2
 COLD_START_FLAT_CAP = 30  # minutes
 MIN_CONFIDENCE = 0.40
 # Absolute lower bound on paused_for before resume prediction can fire.

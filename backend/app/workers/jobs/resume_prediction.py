@@ -164,9 +164,8 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
     # Operator fanout (2026-04-30 + 2026-05-01 escalation refinement):
     # message changes with fire-count so the user isn't getting the
     # same "your usual is X" line after they've blown past X by 5×.
-    # Fire 1 is the gentle nudge, fire 2 acknowledges the miss, fire 3
-    # asks if the session should be abandoned. After fire 3 the
-    # MAX_FIRES_PER_SESSION cap above keeps it quiet entirely.
+    # Fire 1 is the gentle nudge and fire 2 acknowledges the miss. The
+    # MAX_FIRES_PER_SESSION cap above keeps it quiet after that.
     if user.is_operator:
         from app.services.operator_notifier import notify_operator
         # fire_count_for_session was the count BEFORE this fire landed,
@@ -178,15 +177,10 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
                 f"You left *{task.title}* paused {paused_min} min ago. "
                 "Pick it back up?"
             )
-        elif fire_n == 2:
+        else:  # fire_n == 2 (final per MAX_FIRES_PER_SESSION cap)
             msg = (
                 f"*{task.title}* is still paused at {paused_min} min. "
-                "Resume where you left off?"
-            )
-        else:  # fire_n == 3 (final per MAX_FIRES_PER_SESSION cap)
-            msg = (
-                f"Last check on *{task.title}* - {paused_min} min paused. "
-                f"I'll stay quiet on this one now."
+                "Resume where you left off? I'll stay quiet after this."
             )
         notify_operator(
             msg,
