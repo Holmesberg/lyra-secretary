@@ -1,16 +1,23 @@
 """Shared, deterministic burden gates for shipped prediction delivery."""
 
 from datetime import datetime, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.orm import Session
 
-from app.db.models import PausePredictionLog, ResumePredictionLog, User
+from app.db.models import (
+    NotificationLifecycleEvent,
+    PausePredictionLog,
+    ResumePredictionLog,
+    User,
+)
 
 
 QUIET_HOURS_START = 22
 QUIET_HOURS_END = 8
 PREDICTION_SPACING_MINUTES = 30
+PredictionFamily = Literal["pause_prediction", "resume_prediction"]
 
 
 def _as_aware_utc(value: datetime) -> datetime:
@@ -88,3 +95,30 @@ def acquire_prediction_spacing_window(
         .first()
     )
     return recent_resume is None
+
+
+def prediction_family_dismissed_for_session(
+    db: Session,
+    *,
+    user_id: int,
+    family: PredictionFamily,
+    session_id: str,
+) -> bool:
+    """Return whether the authenticated browser dismissed this session family."""
+    if family not in {"pause_prediction", "resume_prediction"}:
+        raise ValueError(f"unsupported prediction family: {family!r}")
+    if not session_id:
+        return False
+
+    return (
+        db.query(NotificationLifecycleEvent.event_id)
+        .filter(
+            NotificationLifecycleEvent.user_id == user_id,
+            NotificationLifecycleEvent.channel == "web",
+            NotificationLifecycleEvent.notification_type == family,
+            NotificationLifecycleEvent.session_id == session_id,
+            NotificationLifecycleEvent.dismissed_at.is_not(None),
+        )
+        .first()
+        is not None
+    )

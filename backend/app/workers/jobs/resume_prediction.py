@@ -31,6 +31,7 @@ from app.services.output_surfaces import (
 from app.services.prediction_burden import (
     acquire_prediction_spacing_window,
     is_within_prediction_quiet_hours,
+    prediction_family_dismissed_for_session,
 )
 from app.services.resume_predictor import (
     COOLDOWN_MINUTES,
@@ -111,6 +112,24 @@ def _maybe_fire_for_task(db, user: User, task: Task, now) -> None:
         .first()
     )
     if pause is None:
+        return
+
+    try:
+        if prediction_family_dismissed_for_session(
+            db,
+            user_id=user.user_id,
+            family="resume_prediction",
+            session_id=session.session_id,
+        ):
+            return
+    except Exception as exc:  # noqa: BLE001 - burden gates fail closed
+        db.rollback()
+        logger.warning(
+            "resume_prediction: dismissal gate failed for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
         return
 
     # Cap total fires per session — operator decision 2026-05-01 to

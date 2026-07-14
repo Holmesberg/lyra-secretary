@@ -41,6 +41,7 @@ from app.services.output_surfaces import (
 from app.services.prediction_burden import (
     acquire_prediction_spacing_window,
     is_within_prediction_quiet_hours,
+    prediction_family_dismissed_for_session,
 )
 from app.services.pause_predictor import PausePredictor
 from app.utils.redis_client import RedisClient
@@ -207,6 +208,24 @@ def _run_for_one_user(db, user: User):
     if active_session is None:
         return
 
+    try:
+        if prediction_family_dismissed_for_session(
+            db,
+            user_id=user.user_id,
+            family="pause_prediction",
+            session_id=active_session.session_id,
+        ):
+            return
+    except Exception as exc:  # noqa: BLE001 - burden gates fail closed
+        db.rollback()
+        logger.warning(
+            "pause_prediction: dismissal gate failed for user_id=%s; "
+            "skipping delivery: %s",
+            user.user_id,
+            exc,
+        )
+        return
+
     already_fired_for_session = (
         db.query(PausePredictionLog.firing_id)
         .filter(
@@ -281,7 +300,7 @@ def _run_for_one_user(db, user: User):
     # Queue a structured payload for the current user's notification poller.
     # Operator Telegram fanout is gated below; non-operator behavioral events
     # must not leak into the shared operator bot.
-    _enqueue_notification(db, user, row)
+    _enqueue_notification(db, user, row, active_session.session_id)
     _deliver_operator_alert(user, row)
 
 
@@ -339,7 +358,12 @@ def _resolve_active_session(db, user: User, task: Task):
     )
 
 
-def _enqueue_notification(db, user: User, row: PausePredictionLog) -> None:
+def _enqueue_notification(
+    db,
+    user: User,
+    row: PausePredictionLog,
+    session_id: str,
+) -> None:
     """Push a pause_prediction notification onto the per-user Redis queue.
 
     Non-fatal: if the push endpoint is unreachable we log and continue —
@@ -354,6 +378,7 @@ def _enqueue_notification(db, user: User, row: PausePredictionLog) -> None:
         "lead_minutes": row.lead_minutes,
         "confidence": row.confidence,
         "active_task_id": row.active_task_id,
+        "session_id": session_id,
     }
     content_snapshot = json.dumps(payload, sort_keys=True)
     try:
