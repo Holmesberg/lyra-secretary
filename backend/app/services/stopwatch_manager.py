@@ -154,6 +154,27 @@ class StopwatchManager:
                 type(exc).__name__,
             )
 
+    def _publish_committed_pause(
+        self,
+        *,
+        user_id: str,
+        session: StopwatchSession,
+        paused_at: datetime,
+    ) -> None:
+        """Best-effort Redis publication after pause truth has committed."""
+        try:
+            self.redis.set_pause_state(
+                user_id,
+                session.session_id,
+                paused_at.isoformat(),
+            )
+        except Exception as exc:  # noqa: BLE001 - DB pause state is canonical
+            logger.warning(
+                "stopwatch.pause: Redis publication failed for user %s: %s",
+                user_id,
+                type(exc).__name__,
+            )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -551,7 +572,11 @@ class StopwatchManager:
         # write latency on the pause path.
         self.db.commit()
         self._invalidate_task_ranges(user_id)
-        self.redis.set_pause_state(user_id, session.session_id, now.isoformat())
+        self._publish_committed_pause(
+            user_id=user_id,
+            session=session,
+            paused_at=now,
+        )
 
         return {
             "paused": True,
