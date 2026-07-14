@@ -22070,3 +22070,54 @@ Next boundary:
   DB/Redis handoff or complete one already-documented manual recovery outcome.
   It may not expand prediction policy, introduce automatic recovery, or begin
   structural extraction by default.
+
+## 2026-07-14 - Wave 6C Committed Stopwatch Start Publication
+
+Canonical start truth under cache failure:
+
+- Issue `#264` recorded a demonstrated post-commit boundary: start committed
+  an EXECUTING task and open stopwatch session before Redis publication, then
+  converted an activation exception into an HTTP `500`. The caller therefore
+  saw failure even though canonical start truth already existed.
+- Product commit `9ba6f53` publishes the committed start through a bounded
+  helper. Redis failure is logged without changing the successful start
+  response; the existing status recovery republishes the same session once
+  Redis is available. No compensating database writer or new authority was
+  introduced.
+- Test commit `4a6f992` injects failure into Redis activation. The real start
+  endpoint remains `200`, exactly one open session exists, the task is
+  EXECUTING, and Redis is initially empty. After publication is restored, the
+  status endpoint recovers the same task and session; a repeated start returns
+  that session rather than creating another. The targeted start/recovery set
+  passed three tests.
+
+Focused mounted proof and cleanup:
+
+- Exact product/test build
+  `4a6f99294816f6676b64b758d7cd6a404fffb10f` ran on isolated ports
+  `3018/8001`, disposable SQLite, Redis DB 15, explicit API proxying, and the
+  real Holmesberg cookie. Preflight at
+  `tmp/proof-preflight/wave6c-start-before.json` proved the non-operator role,
+  no active timer or pending notification, and a clean synthetic prefix.
+- The mounted Pulse path passed at
+  `tmp/post-wave-dogfood/wave6c-start-focused-4a6f992/result.json`: the task
+  and session were canonical, start became active, both zero-duration stop
+  requests returned `200`, terminal truth was SKIPPED, no completion output
+  candidate was emitted, and exact void cleanup succeeded.
+- Desktop and mobile captures were inspected directly. The active result,
+  skipped state, and follow-up choices remained readable with no horizontal
+  overflow. Postflight at
+  `tmp/proof-preflight/wave6c-start-after.json` was green. Teardown closed both
+  listeners, removed `.next-local-current` and the disposable database, and
+  left Redis DB 15 at zero keys. Hosted-public artifacts and processes were
+  untouched.
+
+Rollback and next boundary:
+
+- Revert `9ba6f53` to restore the previous post-commit failure behavior and
+  `4a6f992` to remove the injected proof. No schema or persisted-data migration
+  exists.
+- Committed start publication is now characterized. Pause, resume, and switch
+  DB/Redis handoffs remain explicitly unproven and are the next eligible
+  execution-reliability boundaries. This seam does not authorize prediction
+  expansion or structural extraction.
