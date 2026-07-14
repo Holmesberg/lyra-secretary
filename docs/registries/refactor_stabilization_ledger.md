@@ -22728,3 +22728,75 @@ Focused proof and rollback:
   burden-control cohort. The required macro S1c, browser product-loop,
   lifecycle, multi-account, operator read-only, and cleanup proof follows this
   checkpoint; immediate transition invalidation remains a separate named seam.
+
+### Wave 6K-M macro proof and verifier correction
+
+- Exact product/docs head `ff46f52410a1ef09db350d5a7b12d0e76d17afce`
+  passed CI run `29301326964`: backend, frontend build/typecheck, topology, and
+  every S1c static gate were green. Full local S1c also passed in 99 seconds,
+  including the native negative gate, full backend suite, frontend production
+  build, fresh Alembic smoke, and authority/layer/Cortex/registry scans.
+- Canonical preflight proved an exact-head disposable runtime on ports
+  `3018/8001`, Redis DB 15, and `.next-local-current-wave6klm`; real Holmesberg
+  cookie and non-operator role; empty pending queue; clean `DOGFOOD W6KLM`
+  prefix; bounded export; mounted Pulse capture; and manifest-owned process and
+  artifact isolation.
+- `tmp/browser-product-loop/wave6klm-macro-ff46f52/result.json` passed all 204
+  checks. The explicitly fixture-labelled cold account exercised task creation,
+  persistent estimate Use/Keep actions, Brain Dump recovery, deadline binding,
+  Pressure Map preview/commit/navigation, stopwatch and recovery paths,
+  notification render/action/expiry, export evidence, and cleanup. The three
+  reported issues are fixture/coverage context, not failed checks: local account
+  eligibility was fixture-only, one conflict branch had no eligible nudge, and
+  the parser normalized a synthetic deadline title.
+- Visual inspection confirmed the task estimate actions remained visible in
+  the modal, the mobile Pressure Map primary action was obvious and uncut, and
+  notification toasts stayed readable with distinct dismiss controls.
+
+Focused verifier failure, correction, and lifecycle proof:
+
+- The first standalone notification run stopped before synthetic writes at
+  `tmp/browser-notification-lifecycle/2026-07-14T02-40-09-952Z/result.json`.
+  Issue `#275` classified the verifier mismatch: it lacked the already approved
+  disposable account-readiness fixture and failure capture could mask the
+  primary error by reading `sessionStorage` from `about:blank`.
+- Verifier commit `a7be669` adds a local-current-loopback-only readiness fixture,
+  honest proxy/fixture reporting, and failure-safe context capture. A negative
+  invocation rejected the fixture for public topology before cookie or browser
+  startup.
+- Focused rerun artifact
+  `tmp/browser-notification-lifecycle/2026-07-14T02-41-57-052Z/result.json`
+  passed all 16 checks with no issues. Real mounted toasts proved render ACK
+  retry, action, expiry, explicit dismissal, duplicate terminalization,
+  capacity behavior, lost-unrendered handling, exact exported rows, and zero
+  pending residue. Nine retained rows were explicit terminal synthetic evidence
+  inside the disposable database, which manifest-owned teardown then removed
+  together with Redis DB 15 and the isolated Next artifact.
+
+Multi-account, operator, and teardown proof:
+
+- A second exact-head shared-data runtime at verifier head `a7be669` passed
+  canonical read-only preflight and multi-account browser smoke: the operator
+  cookie resolved `is_operator=true`, Holmesberg resolved false, both pending
+  queues were empty, and no mutable run occurred against shared data.
+- The first operator stress correctly stopped mounted-route proof because the
+  read-only operator account has no onboarding/history; its before/after counts
+  and dashboard snapshots were already unchanged. The focused rerun used the
+  existing read-only eligibility fixture and passed at
+  `tmp/operator-readonly-stress-2026-07-14T02-45-17-642Z/result.json`: zero
+  count, attribution, route, or dashboard snapshot diffs; no issues/warnings;
+  `implementation_green=true`; cohort yellow for explicit evidence gaps; and
+  `exposure_without_render_count=0`.
+- Manifest-owned teardown removed both isolated frontend artifacts and the
+  disposable database/Redis state, left ports `3018/8001` closed, and did not
+  touch public processes, ports, artifacts, or production data.
+
+Rollback and next boundary:
+
+- Revert `8d78d3b`/`7f653b7` for prediction dismissal behavior and `a7be669`
+  for the focused verifier fixture. No schema, public runtime, historical
+  prediction row, research outcome, or provider state changed.
+- The prediction-burden cohort now has exact CI, full S1c, real-cookie product
+  loop, browser lifecycle, multi-account, operator read-only, visual, and
+  cleanup proof. Immediate task/session transition invalidation remains the
+  next bounded burden seam; v2 remains disabled.

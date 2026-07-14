@@ -559,6 +559,27 @@ Holmesberg mutable verification is incomplete until synthetic rows are cleaned,
 voided, or proven harmless. Cleanup proof must be recorded before a wave can be
 closed.
 
+For a focused notification-lifecycle proof against a disposable local-current
+runtime, use the explicitly labelled account-readiness fixture:
+
+```powershell
+$env:LYRA_COOKIE_HOLMESBERG = [Environment]::GetEnvironmentVariable(
+  "LYRA_COOKIE_HOLMESBERG", "User"
+)
+node scripts\browser_notification_lifecycle_dogfood.mjs `
+  --topology local-current `
+  --frontend http://localhost:3018 `
+  --api http://localhost:8001 `
+  --proxy-api true `
+  --fixture-account-ready true `
+  --run-id <run-id>
+```
+
+The fixture changes only the browser's `GET /v1/users/me` eligibility response.
+Notification pushes, mounted DOM, browser acknowledgements, exported lifecycle
+rows, and cleanup remain real. The verifier rejects this fixture unless the
+declared topology is `local-current` and both origins are loopback addresses.
+
 ## Ledger Requirement
 
 Every wave or risky PR must record:
@@ -597,6 +618,5 @@ Add targeted scripts for:
 
 - calendar drag/resize/reschedule;
 - real pressure-map recovery options after pressure safe mode is lifted;
-- notification lifecycle action/expiry;
 - table correction;
 - production-data insights held/unlocked latency.
