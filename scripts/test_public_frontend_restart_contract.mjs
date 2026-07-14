@@ -124,6 +124,17 @@ assert(
 );
 
 assert(
+  /git -C \$repoRoot\.Path status --porcelain --untracked-files=all/.test(script),
+  "native Git must own the pre-deploy clean-tree decision"
+);
+
+assert(
+  (script.match(/diff --ignore-space-at-eol --quiet/g) || []).length >= 2 &&
+    (script.match(/ls-files --others --exclude-standard/g) || []).length >= 2,
+  "WSL guards must ignore line-ending-only drift while rejecting tracked content and untracked files"
+);
+
+assert(
   /public build mutated tracked or untracked source files/.test(script),
   "restart script must fail before swap when a public build leaves source mutations"
 );

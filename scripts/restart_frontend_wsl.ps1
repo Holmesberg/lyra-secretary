@@ -6,6 +6,14 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$nativeSourceStatus = @(git -C $repoRoot.Path status --porcelain --untracked-files=all)
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not inspect native Git status before public frontend restart."
+}
+if ($nativeSourceStatus.Count -gt 0) {
+    throw "Refusing to deploy the public frontend from a dirty tracked or untracked tree."
+}
+
 $wslRepoRoot = (& wsl.exe wslpath -a $repoRoot.Path).Trim()
 if (-not $wslRepoRoot) {
     throw "Could not resolve repo root inside WSL."
@@ -34,10 +42,14 @@ source ~/.nvm/nvm.sh
 cd "`$FRONTEND_DIR"
 export NEXT_TELEMETRY_DISABLED=1
 
-SOURCE_STATUS="`$(git -C "`$FRONTEND_DIR/.." status --porcelain --untracked-files=all)"
-if [ -n "`$SOURCE_STATUS" ]; then
+SOURCE_UNTRACKED="`$(git -C "`$FRONTEND_DIR/.." ls-files --others --exclude-standard)"
+if ! git -C "`$FRONTEND_DIR/.." diff --ignore-space-at-eol --quiet || \
+   ! git -C "`$FRONTEND_DIR/.." diff --cached --quiet || \
+   [ -n "`$SOURCE_UNTRACKED" ]; then
   echo 'ERROR: refusing to deploy from a dirty tracked or untracked tree.' >&2
-  printf '%s\n' "`$SOURCE_STATUS" >&2
+  git -C "`$FRONTEND_DIR/.." diff --ignore-space-at-eol --stat >&2 || true
+  git -C "`$FRONTEND_DIR/.." diff --cached --stat >&2 || true
+  printf '%s\n' "`$SOURCE_UNTRACKED" >&2
   exit 48
 fi
 
@@ -69,10 +81,14 @@ if [ "`$NO_BUILD" != '1' ]; then
   echo "== building public topology into staging artifact `$STAGING_NEXT_DIR =="
   rm -rf "`$STAGING_NEXT_DIR"
   NEXT_DIST_DIR="`$STAGING_NEXT_DIR" npm run build:public
-  POST_BUILD_SOURCE_STATUS="`$(git -C "`$FRONTEND_DIR/.." status --porcelain --untracked-files=all)"
-  if [ -n "`$POST_BUILD_SOURCE_STATUS" ]; then
+  POST_BUILD_UNTRACKED="`$(git -C "`$FRONTEND_DIR/.." ls-files --others --exclude-standard)"
+  if ! git -C "`$FRONTEND_DIR/.." diff --ignore-space-at-eol --quiet || \
+     ! git -C "`$FRONTEND_DIR/.." diff --cached --quiet || \
+     [ -n "`$POST_BUILD_UNTRACKED" ]; then
     echo 'ERROR: public build mutated tracked or untracked source files. Refusing to swap.' >&2
-    printf '%s\n' "`$POST_BUILD_SOURCE_STATUS" >&2
+    git -C "`$FRONTEND_DIR/.." diff --ignore-space-at-eol --stat >&2 || true
+    git -C "`$FRONTEND_DIR/.." diff --cached --stat >&2 || true
+    printf '%s\n' "`$POST_BUILD_UNTRACKED" >&2
     rm -rf "`$STAGING_NEXT_DIR"
     exit 49
   fi
