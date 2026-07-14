@@ -27,6 +27,27 @@ for (let i = 2; i < process.argv.length; i += 1) {
 const frontendOrigin = args.get("frontend") || "https://lyraos.org";
 const apiOrigin = args.get("api") || "https://api.lyraos.org";
 const runId = args.get("run-id") || `notification-lifecycle-${Date.now()}`;
+const declaredTopology = args.get("topology") || "public";
+const proxyApi = args.get("proxy-api") === "true";
+const fixtureAccountReady = args.get("fixture-account-ready") === "true";
+
+function isLoopbackOrigin(origin) {
+  const hostname = new URL(origin).hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+if (
+  fixtureAccountReady
+  && (
+    declaredTopology !== "local-current"
+    || !isLoopbackOrigin(frontendOrigin)
+    || !isLoopbackOrigin(apiOrigin)
+  )
+) {
+  throw new Error(
+    "fixture-account-ready is restricted to local-current loopback origins"
+  );
+}
 const cookie = process.env.LYRA_COOKIE_HOLMESBERG || "";
 if (cookie.length < 100) {
   throw new Error("LYRA_COOKIE_HOLMESBERG is missing or looks truncated.");
@@ -172,6 +193,26 @@ try {
   await context.addCookies(parseAndExpandCookies(cookie, frontendOrigin));
   token = await resolveBackendTokenFromContext(context, frontendOrigin);
   page = await context.newPage();
+  if (fixtureAccountReady) {
+    await page.route("**/v1/users/me", async (route) => {
+      if (route.request().method().toUpperCase() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      if (!response.ok()) {
+        await route.fulfill({ response });
+        return;
+      }
+      const body = await response.json();
+      body.terms_accepted_at = body.terms_accepted_at || "1970-01-01T00:00:00Z";
+      body.archetype_survey_eligible = false;
+      body.onboarding_completed_at = body.onboarding_completed_at
+        || "1970-01-01T00:00:00Z";
+      body.has_active_task_history = true;
+      await route.fulfill({ response, json: body });
+    });
+  }
 
   const preflightStartedAt = Date.now();
   const topologyResponse = await withTimeout(
@@ -223,33 +264,40 @@ try {
     });
   }
   const termsAccepted = Boolean(me.body?.terms_accepted_at);
+  const effectiveAccountReady = fixtureAccountReady || (
+    termsAccepted && onboardingCompleted && hasActiveTaskHistory
+  );
   preflight = {
     ok: topologyResponse.ok
       && healthResponse.ok
       && me.response.ok
       && me.body?.is_operator === false
-      && termsAccepted
+      && (termsAccepted || fixtureAccountReady)
       && pendingCount === 0
       && exportDurationMs <= 30_000
       && exportBytes <= 20_000_000,
     frontend_health: topologyResponse.status,
     backend_health: healthResponse.status,
+    declared_topology: declaredTopology,
     topology_class: topology.topology_class,
     frontend_build_id: topology.build_id,
     compiled_api_origin: topology.compiled_api_origin,
-    proxy_mode: false,
+    proxy_mode: proxyApi,
+    fixture_account_ready: fixtureAccountReady,
     cookie_valid: me.response.ok,
     account_role: me.body?.is_operator ? "operator" : "mutable_dogfood",
     terms_accepted: termsAccepted,
     onboarding_completed: onboardingCompleted,
     has_active_task_history: hasActiveTaskHistory,
     onboarding_gate_open: onboardingGateOpen,
-    onboarding_resolution: onboardingGateOpen
-      ? "session_only_skip_fixture"
-      : "account_ready",
+    onboarding_resolution: fixtureAccountReady
+      ? "local_current_response_fixture"
+      : onboardingGateOpen
+        ? "session_only_skip_fixture"
+        : "account_ready",
     selected_calendar_range: "not_applicable",
     page_loading_completion: "checked by mounted-toast waits",
-    target_surface_eligible: termsAccepted && me.body?.is_operator === false,
+    target_surface_eligible: effectiveAccountReady && me.body?.is_operator === false,
     existing_pending_count: pendingCount,
     existing_synthetic_lifecycle_debt_count: pendingCount,
     export_duration_ms: exportDurationMs,
@@ -618,7 +666,7 @@ try {
         dialog_count: await page.locator('[role="dialog"]').count(),
         session_onboarding_skip: await page.evaluate(() => (
           window.sessionStorage.getItem("lyra:onboarding-skip-this-session") === "1"
-        )),
+        )).catch(() => null),
         screenshot: await screenshot(page, "failure-context"),
       };
     } catch (contextError) {
