@@ -182,6 +182,67 @@ def _get_task(task_id: str) -> Task:
         check.close()
 
 
+@needs_redis
+def test_start_keeps_committed_success_when_redis_activation_fails(
+    state_env, client, monkeypatch
+):
+    """A post-commit Redis failure cannot create an ambiguous failed start."""
+    start, end = _future(10, 60)
+    created = client.post(
+        "/v1/create",
+        json={"title": "committed start publication", "start": start, "end": end},
+        headers=_h(),
+    )
+    assert created.status_code == 200, created.text
+    task_id = created.json()["task_id"]
+
+    from app.utils.redis_client import RedisClient
+
+    original_activate = RedisClient.activate_stopwatch
+
+    def fail_activation(*_args, **_kwargs):
+        raise ConnectionError("injected Redis activation failure")
+
+    monkeypatch.setattr(RedisClient, "activate_stopwatch", fail_activation)
+    response = client.post(
+        "/v1/stopwatch/start",
+        json={"task_id": task_id, "pre_task_readiness": 3},
+        headers=_h(),
+    )
+
+    assert response.status_code == 200, response.text
+    session_id = response.json()["session_id"]
+    assert _get_task(task_id).state == TaskState.EXECUTING
+    assert _assert_session_open(task_id).session_id == session_id
+    assert RedisClient().get_active_stopwatch(str(USER_ID)) is None
+
+    monkeypatch.setattr(RedisClient, "activate_stopwatch", original_activate)
+    status = client.get("/v1/stopwatch/status", headers=_h())
+    assert status.status_code == 200, status.text
+    assert status.json()["active"] is True
+    assert status.json()["task_id"] == task_id
+    assert status.json()["session_id"] == session_id
+    assert _assert_session_open(task_id).session_id == session_id
+
+    retry = client.post(
+        "/v1/stopwatch/start",
+        json={"task_id": task_id, "pre_task_readiness": 3},
+        headers=_h(),
+    )
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["session_id"] == session_id
+    assert _assert_session_open(task_id).session_id == session_id
+
+    stopped = client.post(
+        "/v1/stopwatch/stop",
+        params={"confirmed": "true"},
+        json={"post_task_reflection": 3, "task_completion_percentage": 80},
+        headers=_h(),
+    )
+    assert stopped.status_code == 200, stopped.text
+    _assert_redis_clear()
+
+
 # ---------------------------------------------------------------
 # Invariant 1: EXECUTING → Redis active, session open
 # ---------------------------------------------------------------
