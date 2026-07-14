@@ -28,6 +28,11 @@ QUIET_HOUR_END = 8
 MIN_PROMPT_SPACING_MINUTES = 30
 MAX_PAUSE_PROMPTS_PER_DAY = 3
 PAUSE_EXPOSURE_HORIZON_MINUTES = 45
+RANDOM_NULL_REPETITIONS = 10_000
+BOOTSTRAP_REPETITIONS = 10_000
+MINIMUM_ABSOLUTE_LIFT = 0.10
+MINIMUM_DISCRETE_HIT_LIFT = 1
+MINIMUM_RANDOM_NULL_PERCENTILE = 0.90
 LOCAL_ZONE = ZoneInfo("Africa/Cairo")
 
 
@@ -59,6 +64,25 @@ FROZEN_DEFINITIONS = {
     "quiet_hours": "22:00 through 07:59 Cairo local time",
     "pause_prompt_cap": "one per session and three per Cairo local day",
     "cross_prompt_spacing_minutes": MIN_PROMPT_SPACING_MINUTES,
+    "empirical_base_rate": (
+        "qualifying-pause rate across every eligible holdout minute using "
+        "the selected lead plus 15-minute observation window"
+    ),
+    "simple_baselines": (
+        "fixed 30-minute pause time and calibration-period median pause "
+        "time; both use selected lead, eligibility, burden, and outcome rules"
+    ),
+    "random_null": (
+        "one uniformly sampled eligible minute per session before burden; "
+        "10,000 deterministic seeds numbered 0 through 9,999"
+    ),
+    "bootstrap": (
+        "paired holdout-session resampling with 10,000 deterministic seeds; "
+        "80 percent interval for v2 minus strongest simple comparator"
+    ),
+    "minimum_absolute_lift": MINIMUM_ABSOLUTE_LIFT,
+    "minimum_discrete_hit_lift": MINIMUM_DISCRETE_HIT_LIFT,
+    "minimum_random_null_percentile": MINIMUM_RANDOM_NULL_PERCENTILE,
     "split": "earliest 70 percent calibration; latest 30 percent holdout",
     "selection": (
         "median 1-2 opportunities per active-use day; then narrower lead, "
@@ -314,6 +338,24 @@ def _outside_quiet_hours(value: datetime) -> bool:
     return QUIET_HOUR_END <= hour < QUIET_HOUR_START
 
 
+def apply_pause_burden(
+    candidates: Iterable[ReplayCandidate],
+) -> tuple[ReplayCandidate, ...]:
+    accepted: list[ReplayCandidate] = []
+    day_counts: dict[str, int] = {}
+    for candidate in sorted(candidates, key=lambda row: (row.fired_at, row.session_id)):
+        day = _local_day(candidate.fired_at)
+        if day_counts.get(day, 0) >= MAX_PAUSE_PROMPTS_PER_DAY:
+            continue
+        if accepted and candidate.fired_at - accepted[-1].fired_at < timedelta(
+            minutes=MIN_PROMPT_SPACING_MINUTES
+        ):
+            continue
+        accepted.append(candidate)
+        day_counts[day] = day_counts.get(day, 0) + 1
+    return tuple(accepted)
+
+
 def replay_candidates(
     dataset: ReplayDataset,
     sessions: Iterable[ReplaySession],
@@ -336,19 +378,7 @@ def replay_candidates(
                     break
             now += timedelta(minutes=1)
 
-    accepted: list[ReplayCandidate] = []
-    day_counts: dict[str, int] = {}
-    for candidate in sorted(raw, key=lambda row: (row.fired_at, row.session_id)):
-        day = _local_day(candidate.fired_at)
-        if day_counts.get(day, 0) >= MAX_PAUSE_PROMPTS_PER_DAY:
-            continue
-        if accepted and candidate.fired_at - accepted[-1].fired_at < timedelta(
-            minutes=MIN_PROMPT_SPACING_MINUTES
-        ):
-            continue
-        accepted.append(candidate)
-        day_counts[day] = day_counts.get(day, 0) + 1
-    return tuple(accepted)
+    return apply_pause_burden(raw)
 
 
 def summarize(
