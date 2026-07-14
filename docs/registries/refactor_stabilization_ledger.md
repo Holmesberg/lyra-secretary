@@ -22433,3 +22433,55 @@ Visual inspection and reality gate:
   experimentation readiness, or permission to expand prediction policy. The
   next seam must follow the weakest remaining declared product-loop gate rather
   than extract stopwatch structure for neatness.
+
+## 2026-07-14 - Wave 6G Account Deletion Runtime-Purge Precondition
+
+Failure boundary and behavior parity:
+
+- Issue `#207` recorded that account deletion committed irreversible database
+  changes before attempting the required Redis/runtime purge. A purge outage
+  could therefore return `ok=true` with `runtime_state_purged=false`, after
+  which Settings signed the deleted identity out and left no authenticated
+  retry path.
+- Product commit `f6c591a` moves the existing canonical runtime purge ahead of
+  durable deletion. If purge fails, the endpoint writes a redacted
+  `account_delete_failed` audit row and returns retryable `503` with an explicit
+  guarantee that nothing was deleted. The user, deletion owner, retention
+  choice, schema, and registered purge implementation are unchanged.
+- Successful retention and hard-delete behavior remains unchanged. The
+  response reports `runtime_state_purged=true` only after the purge precondition
+  has completed. A later durable-cleanup worker or outbox was not introduced.
+
+Focused contract and mounted-browser proof:
+
+- Test commit `0dfda16` fault-injects Redis failure for both hard-delete and
+  retained-research modes. Eight targeted export/delete tests passed. Under
+  failure, the user, task, session, and deadline remain present, the export is
+  still available through the same authenticated identity, and the redacted
+  failure audit names only the precondition phase and retention choice.
+- Exact build `0dfda164ace6b0e245f9f650e714dd15a4835828` ran on isolated
+  ports `3018/8001` and `.next-local-current-account-delete`; hosted-public
+  ports and artifacts were untouched. Canonical preflight proved cookie, role,
+  topology, build identity, zero pending notifications, and a clean prefix.
+  The shared Holmesberg account was honestly classified as consent-gated, so
+  the mounted proof used the local-current-only readiness response fixture and
+  explicit API proxying. It is fixture-only, not hosted-public proof.
+- The focused Settings proof used the real Holmesberg cookie, intercepted only
+  the irreversible DELETE with the exact `503` contract, and passed 11 checks:
+  the error rendered, the action remained retryable, no unexpected browser or
+  server errors occurred, authentication remained valid, and export counts
+  stayed exactly `306` tasks, `152` deadlines, and `70` sessions. The visual
+  artifact masks the confirmation input; an earlier unmasked generated image
+  was deleted immediately and was never staged.
+- Postflight repeated the topology, role, export, pending-state, mount, and
+  no-write checks. Manifest-owned teardown closed both listeners and removed
+  the isolated Next artifact.
+
+Rollback and remaining gate:
+
+- Revert `f6c591a` for runtime behavior and `0dfda16` for characterization.
+  No migration or data repair is involved. Completed real deletions remain
+  irreversible regardless of code rollback.
+- Actual browser deletion remains gated to a disposable delete-only identity
+  and explicit approval. The fixture proof establishes recoverable UI behavior;
+  backend fault injection establishes the real write boundary.

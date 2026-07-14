@@ -575,8 +575,8 @@
     {
       "id": "account.delete",
       "name": "Account deletion, optional retained research rows, and runtime purge",
-      "status": "partial",
-      "facets": {"computation": "shipped", "delivery": "shipped", "ui": "shipped", "mutation": "partial"},
+      "status": "shipped",
+      "facets": {"computation": "shipped", "delivery": "shipped", "ui": "shipped", "mutation": "shipped"},
       "preservation_required": true,
       "owner": "Users delete endpoint, user_data_registry, and Redis runtime purge",
       "active_contracts": ["docs/registries/user_data_ownership_manifest.json", "docs/single_authority_contract.md"],
@@ -588,7 +588,7 @@
       "proof": {"tests": ["backend/tests/test_delete_account_modern_auxiliary_rows.py", "backend/tests/test_delete_account_with_external_outcomes.py"], "browser": [], "minimum_tier": "disposable-account-gated", "gated": ["browser proof requires a disposable delete-only account and explicit approval"]},
       "historical_sources": [],
       "rollback": "Completed hard deletion is irreversible; rollback applies only before execution or to code, never deleted production data.",
-      "known_gaps": ["Issue #207: endpoint can report success after DB commit when runtime purge fails."]
+      "known_gaps": []
     },
     {
       "id": "operator.readiness_cockpit",
