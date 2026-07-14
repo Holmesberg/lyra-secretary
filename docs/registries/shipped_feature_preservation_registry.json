@@ -264,7 +264,7 @@
       "proof": {"tests": ["backend/tests/test_stopwatch_switch.py", "backend/tests/test_stopwatch_recovery.py", "backend/tests/test_stale_pause_resolution.py", "backend/tests/test_void_clears_stopwatch.py", "backend/tests/test_state_consistency.py"], "browser": [{"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "timer paused session survives pulse refresh"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "timer stop writes execution delta fields"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "Pulse zero-duration response preserves skipped terminal truth"}, {"script": "scripts/browser_holmesberg_product_loop_dogfood.mjs", "check": "Today zero-duration response preserves skipped terminal truth"}], "minimum_tier": "local-current", "gated": []},
       "historical_sources": [],
       "rollback": "Revert the touched lifecycle seam while retaining DB sessions and Redis recovery compatibility.",
-      "known_gaps": ["Resume and switch DB/Redis handoffs still require focused fault injection."]
+      "known_gaps": ["Switch DB/Redis handoffs still require focused fault injection."]
     },
     {
       "id": "execution.stop_result_outputs",

@@ -22235,3 +22235,54 @@ Next boundary:
   resume publication or switch convergence. Another full browser macro is not
   due until two or three related seams complete or a serious failure demands
   it.
+
+## 2026-07-14 - Wave 6E Committed Stopwatch Resume Cleanup
+
+Canonical resume truth and cache convergence:
+
+- Issue `#266` recorded a demonstrated post-commit split: resume committed the
+  closed PauseEvent, accumulated pause duration, pause count, cleared session
+  pause timestamp, and EXECUTING task state before Redis pause-key cleanup. A
+  cache exception then produced an HTTP `500`, left the UI visibly paused, and
+  allowed retry to count the same pause twice.
+- Product commit `79dd238` makes post-commit pause-key cleanup best effort and
+  keeps DB resume truth authoritative. `ActiveStopwatchStore` now clears a
+  stale Redis pause key whenever the canonical active task is EXECUTING. The
+  existing store remains the sole cache-reconciliation owner; no compensation
+  writer, schema, or resume-eligibility change was added.
+- Test commit `2d4873e` injects failure into Redis resume cleanup. The real
+  resume endpoint remains `200`, task/session/PauseEvent truth commits once,
+  and the stale pause key is observable. After cleanup is restored, status
+  clears that key from EXECUTING truth, a repeated resume leaves pause count
+  and total paused minutes unchanged, and terminal stop converges. The targeted
+  resume, pause, and recovery set passed four tests against Redis DB 15.
+
+Focused mounted proof and cleanup:
+
+- Exact product/test build
+  `2d4873ef61374fd56e33b93206818042307f23fb` ran on isolated ports
+  `3018/8001`, disposable SQLite, Redis DB 15, explicit API proxying, and the
+  real Holmesberg cookie. Preflight at
+  `tmp/proof-preflight/wave6e-resume-before.json` proved the non-operator role,
+  no active timer or pending notification, and a clean synthetic prefix.
+- The focused Pulse lifecycle passed at
+  `tmp/post-wave-dogfood/wave6e-resume-focused-2d4873e/result.json`. It proved
+  explicit pause, exported reason provenance, pause continuity across refresh
+  and Calendar/Today navigation, direct re-entry resume, cleared paused state,
+  terminal stop, one authenticated output render, execution delta, and exact
+  retained-evidence cleanup.
+- The mobile capture was inspected directly; timer controls, the seven pause
+  choices, and Pressure Map remained contained with zero horizontal overflow.
+  Postflight at `tmp/proof-preflight/wave6e-resume-after.json` was green.
+  Teardown closed both listeners, removed `.next-local-current` and the
+  disposable database, and left Redis DB 15 at zero keys. Hosted-public
+  artifacts and processes were untouched.
+
+Rollback and next boundary:
+
+- Revert `79dd238` for product behavior and `2d4873e` for the injected proof.
+  No persisted-data migration exists.
+- Start, pause, resume, and terminal stop post-commit boundaries are now
+  characterized. Switch DB/Redis convergence remains the only named stopwatch
+  handoff gap in the preservation registry. Prediction expansion and structural
+  extraction remain outside this seam.
