@@ -109,6 +109,18 @@ def _make_executing_task(db, user_id: int = USER_ID) -> Task:
         source="manual",
     )
     db.add(t)
+    db.flush()
+    db.add(
+        StopwatchSession(
+            session_id=str(uuid4()),
+            task_id=t.task_id,
+            user_id=user_id,
+            start_time_utc=now - timedelta(minutes=45),
+            end_time_utc=None,
+            auto_closed=False,
+            total_paused_minutes=0,
+        )
+    )
     db.commit()
     db.refresh(t)
     return t
@@ -343,6 +355,24 @@ def test_no_active_task_skips_prediction(db, user):
     assert mock_telegram.call_count == 0
 
 
+def test_executing_task_without_open_session_skips_prediction(db, user):
+    task = _make_executing_task(db)
+    db.query(StopwatchSession).filter(
+        StopwatchSession.task_id == task.task_id
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
+         patch("app.workers.jobs.pause_prediction.notify_operator"):
+        mock_cls.return_value.predict.return_value = _canned_prediction()
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert db.query(PausePredictionLog).count() == 0
+    assert mock_enqueue.call_count == 0
+
+
 def test_cooldown_blocks_refire(db, user):
     """A firing within FIRING_COOLDOWN_MINUTES suppresses the next tick."""
     now = now_utc()
@@ -395,6 +425,71 @@ def test_cooldown_expired_allows_fire(db, user):
         mock_cls.return_value.predict.return_value = _canned_prediction()
         _run_for_one_user(db, user)
 
+    assert db.query(PausePredictionLog).count() == 2
+
+
+def test_active_session_cap_blocks_refire_after_cooldown(db, user):
+    task = _make_executing_task(db)
+    now = now_utc()
+    db.add(
+        PausePredictionLog(
+            user_id=USER_ID,
+            fired_at=now - timedelta(minutes=20),
+            predicted_at=now - timedelta(minutes=18),
+            mechanism="clock_anchor",
+            confidence=0.55,
+            lead_minutes=2,
+            sample_size=5,
+            active_task_id=task.task_id,
+            user_response="no_response",
+            response_at=now - timedelta(minutes=13),
+        )
+    )
+    db.commit()
+
+    with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification") as mock_enqueue, \
+         patch("app.workers.jobs.pause_prediction.notify_operator"):
+        mock_cls.return_value.predict.return_value = _canned_prediction()
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert db.query(PausePredictionLog).count() == 1
+    assert mock_enqueue.call_count == 0
+
+
+def test_new_session_for_same_task_allows_new_pause_prediction(db, user):
+    task = _make_executing_task(db)
+    now = now_utc()
+    open_session = (
+        db.query(StopwatchSession)
+        .filter(StopwatchSession.task_id == task.task_id)
+        .one()
+    )
+    open_session.start_time_utc = now - timedelta(minutes=5)
+    db.add(
+        PausePredictionLog(
+            user_id=USER_ID,
+            fired_at=now - timedelta(minutes=20),
+            predicted_at=now - timedelta(minutes=18),
+            mechanism="clock_anchor",
+            confidence=0.55,
+            lead_minutes=2,
+            sample_size=5,
+            active_task_id=task.task_id,
+            user_response="no_response",
+            response_at=now - timedelta(minutes=13),
+        )
+    )
+    db.commit()
+
+    with patch("app.workers.jobs.pause_prediction.PausePredictor") as mock_cls, \
+         patch("app.workers.jobs.pause_prediction.enqueue_user_notification"), \
+         patch("app.workers.jobs.pause_prediction.notify_operator"):
+        mock_cls.return_value.predict.return_value = _canned_prediction()
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 1
     assert db.query(PausePredictionLog).count() == 2
 
 
