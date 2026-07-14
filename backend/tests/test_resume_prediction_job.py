@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from app.db.models import (
     PauseEvent,
+    PausePredictionLog,
     ResumePredictionLog,
     StopwatchSession,
     Task,
@@ -44,6 +45,7 @@ def _stable_worker_clock(monkeypatch):
 def _clean_slate(db):
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
     db.execute(text("DELETE FROM stopwatch_session"))
@@ -53,6 +55,7 @@ def _clean_slate(db):
     yield
     set_current_user_id(None)
     db.rollback()
+    db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
     db.execute(text("DELETE FROM stopwatch_session"))
@@ -222,6 +225,35 @@ def test_invalid_timezone_fails_closed_for_resume_prediction(db):
     assert mock_cls.return_value.predict.call_count == 0
     assert patched["enqueue_user_notification"].call_count == 0
     assert db.query(ResumePredictionLog).count() == 0
+
+
+def test_recent_pause_prediction_blocks_resume_family(db):
+    user = _make_user(db)
+    task, _session, _pause = _make_paused_task_with_open_pause(db, user.user_id)
+    db.add(
+        PausePredictionLog(
+            user_id=user.user_id,
+            fired_at=TEST_NOW_UTC - timedelta(minutes=29),
+            predicted_at=TEST_NOW_UTC - timedelta(minutes=26),
+            mechanism="clock_anchor",
+            confidence=0.7,
+            lead_minutes=3,
+            sample_size=7,
+            active_task_id=task.task_id,
+        )
+    )
+    db.commit()
+    set_current_user_id(user.user_id)
+
+    with patch(
+        "app.workers.jobs.resume_prediction.ResumePredictor"
+    ) as mock_cls, _patch_delivery() as patched:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert patched["enqueue_user_notification"].call_count == 0
+    assert db.query(ResumePredictionLog).count() == 0
+    assert db.query(PausePredictionLog).count() == 1
 
 
 def test_fresh_pause_does_not_fire_resume_prediction(db):

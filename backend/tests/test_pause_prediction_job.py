@@ -29,6 +29,7 @@ from app.db.models import (
     ExposureDecisionEvent,
     ExposureRenderEvent,
     PausePredictionLog,
+    ResumePredictionLog,
     StopwatchSession,
     Task,
     TaskState,
@@ -66,6 +67,7 @@ def _clean_slate(db):
     db.execute(text("DELETE FROM exposure_render_event"))
     db.execute(text("DELETE FROM suppression_event"))
     db.execute(text("DELETE FROM exposure_decision_event"))
+    db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
     db.execute(text("DELETE FROM stopwatch_session"))
@@ -79,6 +81,7 @@ def _clean_slate(db):
     db.execute(text("DELETE FROM exposure_render_event"))
     db.execute(text("DELETE FROM suppression_event"))
     db.execute(text("DELETE FROM exposure_decision_event"))
+    db.execute(text("DELETE FROM resume_prediction_log"))
     db.execute(text("DELETE FROM pause_prediction_log"))
     db.execute(text("DELETE FROM pause_event"))
     db.execute(text("DELETE FROM stopwatch_session"))
@@ -249,6 +252,39 @@ def test_invalid_timezone_fails_closed_for_pause_prediction(db, user):
     assert mock_cls.return_value.predict.call_count == 0
     assert mock_enqueue.call_count == 0
     assert db.query(PausePredictionLog).count() == 0
+
+
+def test_recent_resume_prediction_blocks_pause_family(db, user):
+    task = _make_executing_task(db)
+    session = db.query(StopwatchSession).filter(
+        StopwatchSession.task_id == task.task_id
+    ).one()
+    db.add(
+        ResumePredictionLog(
+            user_id=user.user_id,
+            session_id=session.session_id,
+            task_id=task.task_id,
+            fired_at=TEST_NOW_UTC - timedelta(minutes=29),
+            paused_for_minutes=35,
+            p75_pause_minutes=None,
+            mechanism="cold_start_synthetic",
+            confidence=0.4,
+            sample_size=0,
+        )
+    )
+    db.commit()
+
+    with patch(
+        "app.workers.jobs.pause_prediction.PausePredictor"
+    ) as mock_cls, patch(
+        "app.workers.jobs.pause_prediction.enqueue_user_notification"
+    ) as mock_enqueue:
+        _run_for_one_user(db, user)
+
+    assert mock_cls.return_value.predict.call_count == 0
+    assert mock_enqueue.call_count == 0
+    assert db.query(PausePredictionLog).count() == 0
+    assert db.query(ResumePredictionLog).count() == 1
 
 
 def test_run_pause_prediction_only_iterates_active_candidates(monkeypatch):
@@ -511,7 +547,7 @@ def test_active_session_cap_blocks_refire_after_cooldown(db, user):
     assert mock_enqueue.call_count == 0
 
 
-def test_new_session_for_same_task_allows_new_pause_prediction(db, user):
+def test_new_session_for_same_task_allows_after_shared_spacing(db, user):
     task = _make_executing_task(db)
     now = now_utc()
     open_session = (
@@ -523,15 +559,15 @@ def test_new_session_for_same_task_allows_new_pause_prediction(db, user):
     db.add(
         PausePredictionLog(
             user_id=USER_ID,
-            fired_at=now - timedelta(minutes=20),
-            predicted_at=now - timedelta(minutes=18),
+            fired_at=now - timedelta(minutes=31),
+            predicted_at=now - timedelta(minutes=29),
             mechanism="clock_anchor",
             confidence=0.55,
             lead_minutes=2,
             sample_size=5,
             active_task_id=task.task_id,
             user_response="no_response",
-            response_at=now - timedelta(minutes=13),
+            response_at=now - timedelta(minutes=24),
         )
     )
     db.commit()
