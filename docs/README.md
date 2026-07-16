@@ -61,8 +61,9 @@ non-authorizing document set:
   adversarial review of the bounded WorkSprint idea, its duplication risks,
   and the deliberately rejected universal-registry approach;
 - `docs/audits/authority_control_plane_rewrite_assessment_2026_07_16.md` -
-  repository-grounded assessment of replacing overlapping governance manifests
-  with federated capability contracts and a build-time compiler;
+  repository-grounded assessment of replacing overlapping governance without
+  freezing current topology, using trace invariants, revocable authority
+  leases, a disposable Architecture Twin, and per-change proof packets;
 - `docs/concepts/plan_execution_computation_catalogue.md` - catalogue of
   deterministic, statistical, process-alignment, tree, survival, and future
   reasoning candidates;
@@ -72,8 +73,9 @@ non-authorizing document set:
 - `docs/parked/founder_core_loop_work_sprint_candidate_plan_2026_07_16.md` -
   documentation-only founder vertical-slice candidate with a local Data Delta,
   bounded lifecycle, adversarial proof, and product usefulness gates;
-- `docs/parked/capability_contract_control_plane_migration_plan_2026_07_16.md` -
-  staged, non-authorizing shadow-compiler and registry-parity migration plan.
+- `docs/parked/evolutionary_authority_control_plane_pilot_2026_07_16.md` -
+  staged, non-authorizing evolutionary-control-plane pilot with explicit
+  counterarchitecture and deletion tests.
 
 These notes may define vocabulary, candidate roles, and prerequisites. They do
 not authorize runtime AI, adapter wiring, schema work, experiments, pricing,

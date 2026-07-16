@@ -1,4 +1,4 @@
-# Authority Control-Plane Rewrite Assessment
+# Evolutionary Authority Control-Plane Assessment
 
 ---
 authority: audit-evidence
@@ -12,277 +12,385 @@ required_final_reviewer: founder
 audit_date: 2026-07-16
 ---
 
-## 1. Question
+## 1. Revised Question
 
-Would rewriting LyraOS authority and governance infrastructure remove enough
-duplication, drift, and implementation friction to justify replacing the
-current registry stack?
+Can LyraOS replace duplicated governance infrastructure without turning the
+current services, tables, routes, frontend framework, or product vocabulary
+into a permanent architecture?
 
-The answer is **yes, conditionally**.
+The earlier answer proposed federated capability contracts compiled into a
+global authority graph. That would reduce duplication, but it contains a
+serious failure mode: a sufficiently successful compiler could preserve the
+current implementation more effectively than it preserves LyraOS's truth
+invariants.
 
-The valuable rewrite is not a runtime policy engine, universal ontology, or
-larger central registry. It is a build-time **Capability Contract Compiler**
-that turns bounded capability declarations into several mechanically checked
-views of the same architecture.
+The corrected answer is:
 
-Rewrite the control plane. Preserve the product authorities.
+> Govern legal truth transitions, not today's component topology.
 
-## 2. Current Repository Reality
+The recommended control plane has four deliberately unequal parts:
 
-LyraOS currently distributes governance across several partially overlapping
-sources:
+1. a small **Trace Constitution** containing architecture-independent
+   invariants;
+2. **revocable authority leases** binding semantic roles to current
+   implementations;
+3. a disposable, generated **Architecture Twin** that observes the current
+   repository;
+4. per-change **Proof Packets** that demonstrate what a change preserved.
 
-| Current source | What it does well | Structural problem |
-| --- | --- | --- |
-| `docs/AUTHORITY.md` | Human-readable constitution and freeze doctrine | Mixes stable doctrine, current phase, historical context, and registry pointers |
-| `docs/single_authority_contract.md` | Strong one-owner invariant | Repeats doctrine from the authority map and cannot mechanically prove ownership |
-| mutation-surface registry | Names 18 mutation-capable surfaces, owners, paths, and writes | Hand-maintained and separate from route, cache, privacy, and output declarations |
-| output-surface registry | Executable policy for 27 behavior-shaping surfaces | Surface policy is detached from the feature, mutation, preservation, and privacy declarations |
-| preservation registry | Tracks 45 shipped, partial, historical, dead, and parked capabilities | Repeats owners, runtime paths, writes, output IDs, contracts, proof, and rollback |
-| Python user-data registry | Executable export/delete authority for user-owned rows | Correctly executable, but its documentation manifest repeats a manually copied section list |
-| clean-data registry and contracts | Protect provenance and claim admission | Vocabulary and owners are not linked mechanically to the capabilities that consume them |
-| frontend query-key contract | Centralizes invalidation recipes | Mutation impact is maintained separately from backend mutation ownership |
-| CI scanners | Catch missing owners and known forbidden patterns | Several scanners parse paths and text independently rather than one typed architecture graph |
+No generated view becomes runtime truth. No current path, table, service,
+query key, or UI module becomes constitutional.
 
-This infrastructure is not bad. It reflects real failures that were fixed one
-boundary at a time. Its weakness is that every new capability must be described
-several times in different shapes.
+## 2. Why The Compiler Proposal Was Still Too Conservative
 
-## 3. What The Current Control Plane Cannot Answer Directly
+The repository currently repeats real information across:
 
-No single current source can answer:
+- `docs/AUTHORITY.md` and `docs/single_authority_contract.md`;
+- the mutation-surface registry;
+- the output-surface registry;
+- the shipped-feature preservation registry;
+- the executable Python user-data registry and its documentation manifest;
+- clean-data contracts;
+- frontend query-key contracts;
+- static scanners and CI allowlists.
 
-- Which command owns this write, and which frontend projections must refresh?
-- Which behavior-shaping surfaces can result from that command?
-- Which output policy, clean profile, claim ceiling, and browser acknowledgement
-  apply to the surface?
-- Which user-owned rows, Redis keys, export sections, and delete paths does the
-  capability introduce?
-- Which characterization, browser, cleanup, and rollback proofs preserve it?
-- Which parked concept would accidentally compete with its authority?
-- If the capability is removed, which routes, surfaces, queries, registries,
-  docs, and tests must move together?
+A capability compiler could join these declarations. But the proposed
+contract vocabulary included `runtime_paths`, handlers, writes, invalidation
+keys, queries, surfaces, data assets, tests, and rollback paths. Once those
+fields drive hard gates or generated runtime registries, ordinary architecture
+change becomes contract migration.
 
-Engineers currently reconstruct these answers by joining registries mentally.
-That is exactly where duplicate structures and stale governance appear.
+That creates five forms of ossification:
 
-## 4. Alternatives Considered
+1. **Component ossification:** `TaskManager` can become mistaken for the
+   permanent meaning of task lifecycle authority.
+2. **Storage ossification:** current tables can become the vocabulary through
+   which all future data ownership must be expressed.
+3. **Frontend ossification:** React Query keys can become architectural
+   concepts instead of one cache implementation's bindings.
+4. **Capability ossification:** today's feature boundaries can become the
+   required decomposition for future product work.
+5. **Governance inversion:** product code starts serving the compiler's schema
+   instead of governance describing and testing product truth.
 
-### A. Keep every registry and add more cross-scanners
+Reducing duplicate files is not worth creating a second, slower programming
+language for LyraOS.
 
-Lowest immediate risk, but it compounds maintenance. Every scanner must learn
-the same identifiers, paths, and exceptions. Reject as the long-term design.
+## 3. Architectural Inversion
 
-### B. Replace everything with one central mega-manifest
-
-This makes joins easy but creates a governance god object. It will accumulate
-feature fields, ontology fields, deployment details, metrics, and arbitrary
-exceptions. Reject.
-
-### C. Introduce a runtime command bus or policy engine
-
-This could enforce mutation ownership dynamically, but it would put governance
-on the product request path, force broad mutation rewrites, and create a new
-operational failure domain. Reject for the current product stage.
-
-### D. Federated capability contracts plus a compiler
-
-Recommended. Each bounded capability declares only its cross-boundary contract.
-A build-time compiler validates references and emits the global views needed by
-runtime adapters, CI, documentation, and reviewers.
-
-## 5. Recommended Architecture
+The durable object is not a capability manifest. It is a legal semantic trace.
 
 ```text
-capability contract fragments
--> Capability Contract Compiler
--> validated authority graph
--> generated projections
-   - mutation ownership scan input
-   - output-surface registry projection
-   - preservation report
-   - user-data coverage report
-   - query invalidation obligations
-   - proof and rollback index
-   - human-readable authority map
+user/system intent
+-> candidate or decision
+-> authorized canonical mutation
+-> derived projection
+-> delivery attempt
+-> authenticated browser render
+-> interaction
+-> later outcome
 ```
 
-The compiler is build-time infrastructure. It never decides a user request,
-mutates product state, emits a claim, creates exposure truth, or selects an
-intervention.
+Not every workflow contains every step. The constitution defines which
+transitions are legal and which evidence is required when a step exists.
 
-### 5.1 Contract unit
+A trace is a normalized proof object. It need not be a new production event
+table or event-sourced architecture. It may be reconstructed in tests from
+existing rows, API results, browser acknowledgements, Redis state, and
+instrumented writes.
 
-One contract describes one stable capability boundary, not one component,
-route, table, or future idea. Examples:
+This means a monolith, modular monolith, split service, different database
+layout, different frontend cache, or later event-driven implementation can all
+conform to the same constitution.
 
-- `task.lifecycle`;
-- `stopwatch.execution`;
-- `brain_dump.commit`;
-- `academic.pressure_map`;
-- `output.exposure_ledger`;
-- a later approved `work_sprint`.
+## 4. Layer One: Trace Constitution
 
-### 5.2 Minimal contract vocabulary
+The constitution contains only rules expected to survive a major rewrite.
+
+Current candidate invariants include:
+
+- one active write authority per semantic truth role;
+- provider/import/parser output remains candidate or structure until a
+  canonical authority accepts it;
+- browser-rendered exposure requires authenticated acknowledgement from the
+  owning user and client instance;
+- decision, delivery, render, interaction, mutation, and later outcome are not
+  interchangeable;
+- terminal lifecycle transitions are explicit, ordered, idempotent, and
+  reconstructible;
+- operator reads do not mutate user or product state;
+- every user-owned durable or runtime data asset has export, deletion,
+  retention, and cleanup treatment;
+- clean-data admission and claim ceilings cannot be bypassed by presentation,
+  provider, analytics, or reasoning layers;
+- parked, historical, and retired behavior cannot acquire active write or
+  render authority silently;
+- rollback preserves canonical evidence or explicitly classifies what cannot
+  be restored.
+
+These are predicates over behavior, not declarations about file placement.
+
+### 4.1 Constitutional promotion rule
+
+A rule enters the hard constitution only when at least one condition holds:
+
+- it protects two independent current product paths;
+- it prevents recurrence of a demonstrated serious incident;
+- it guards an irreversible privacy, identity, deletion, or canonical-truth
+  boundary.
+
+Feature-specific preferences, provisional formulas, current module shapes,
+and hypothetical future needs remain local.
+
+### 4.2 Counterfactual flexibility test
+
+Every proposed hard rule must answer:
+
+> Could LyraOS replace the current service, database layout, frontend
+> framework, or cache library while still satisfying this rule?
+
+If not, the rule is an implementation binding or observation. It cannot be
+constitutional.
+
+## 5. Layer Two: Revocable Authority Leases
+
+The constitution names semantic roles rather than permanent owners:
+
+```text
+task.lifecycle.write.v1
+deadline.canonical.write.v1
+stopwatch.execution.write.v1
+exposure.browser_render.ack.v1
+user_data.export_delete.v1
+claim.publish.v1
+```
+
+An authority lease records which current implementation holds one role:
 
 ```yaml
-id:
-status: shipped | partial | parked | historical | retired
-owner:
-runtime_paths:
-truth:
-  owns:
-  references:
-commands:
-  - id:
-    handler:
-    writes:
-    invalidates:
-queries:
-surfaces:
-data_assets:
-access:
-clean_profiles:
-claim_ceiling:
-proof:
-rollback:
+role: task.lifecycle.write.v1
+holder:
+  symbol: app.services.task_manager.TaskManager
+scope:
+  - task.canonical_state
+status: active
+supersedes: null
+transfer_proof:
+  - task_lifecycle_characterization
 ```
 
-This vocabulary describes boundary obligations. It does not enumerate every
-database field, UI state, formula, or future ontology concept.
+The role is stable only while its semantics are stable. The holder is always
+replaceable. A service may be renamed, split, merged, or rewritten by changing
+the lease and proving a handoff. The constitutional rule is that one active
+holder exists, not that `TaskManager` exists.
 
-### 5.3 Authority graph
+Leases are trigger-reviewed when their holder or semantic scope changes. They
+do not require calendar-based renewal, which would add ceremony without
+evidence.
 
-The compiler normalizes contracts into typed nodes and edges:
+During a handoff:
+
+- one implementation retains active write authority;
+- another may run read-only, shadow, or comparison logic;
+- dual-write authority is forbidden unless a separately approved migration
+  protocol defines reconciliation and rollback;
+- transfer completes only after old and new traces satisfy the same
+  constitutional scenarios.
+
+## 6. Layer Three: Generated Architecture Twin
+
+The Architecture Twin is generated cartography of the current repository. It
+may observe:
+
+- routes and handlers;
+- service symbols and import edges;
+- ORM models, tables, and commit sites;
+- Redis and external-effect adapters;
+- output-surface registrations;
+- frontend query domains and invalidations;
+- export/delete registrations;
+- tests, browser paths, and rollback references.
+
+Its output is useful for impact analysis and drift detection, but it has no
+authority. It must carry confidence and unknown edges rather than inventing
+completeness.
+
+The twin follows three hard rules:
+
+1. product runtime never imports or calls it;
+2. generated topology is not committed as canonical architecture;
+3. deleting and regenerating it cannot alter product behavior.
+
+Path changes and module splits therefore update the twin automatically or
+produce a binding warning. They do not require changing constitutional truth.
+
+## 7. Layer Four: Proof-Carrying Changes
+
+Instead of permanently encoding every current feature in one global schema,
+each meaningful change produces a temporary `ChangeProofPacket` containing:
+
+- semantic roles touched;
+- observed implementation bindings changed;
+- constitutional predicates at risk;
+- expected writes and forbidden writes;
+- exposure, privacy, export/delete, and cleanup impact;
+- focused positive and negative proof;
+- rollback path;
+- unresolved architecture-twin edges.
+
+The packet is generated from the diff, leases, twin, and selected tests. It is
+a CI/review artifact and ledger input, not a runtime object or expanding
+forever-registry.
+
+This changes the governance question from:
 
 ```text
-Capability --owns--> TruthClass
-Command --writes--> DataAsset
-Command --invalidates--> QueryDomain
-Capability --renders--> OutputSurface
-OutputSurface --requires--> CleanProfile
-DataAsset --uses--> ExportDeletePolicy
-Proof --verifies--> ContractEdge
-Capability --rolled_back_by--> RollbackPath
+Did every manifest describe the new architecture?
 ```
 
-This is an architecture graph, not a behavioral knowledge graph and not a
-DecisionEpisode schema.
+to:
 
-## 6. What Should Be Generated
-
-### Generate first
-
-- human-readable owner and blast-radius reports;
-- preservation-registry projection;
-- mutation scanner configuration;
-- cross-registry drift findings;
-- missing proof, rollback, privacy, and output-policy findings.
-
-These outputs do not affect runtime behavior and are the safest parity targets.
-
-### Generate after parity
-
-- the runtime output-surface JSON, byte-for-byte equivalent to the current
-  registry before cutover;
-- a machine-readable invalidation obligation matrix consumed by frontend
-  contract tests.
-
-### Validate, but do not generate
-
-- Python export/delete queries and deletion order;
-- custom redaction logic;
-- SQLAlchemy relationships and migration order;
-- canonical service mutation logic;
-- browser render acknowledgement;
-- clean-data formulas;
-- rollback commands.
-
-These remain executable code because generation would hide domain-specific
-semantics. The compiler proves coverage and references; it does not synthesize
-behavior.
-
-## 7. Optional Second-Order Primitive
-
-A later API standard may return a non-persisted `MutationImpact` envelope:
-
-```json
-{
-  "command_id": "task.reschedule",
-  "changed_truth": ["task.plan"],
-  "invalidate": ["tasks", "calendar", "pressure_map"],
-  "entity_refs": ["task:..."],
-  "mutation_ref": "..."
-}
+```text
+Did this change preserve the legal traces and explicitly transfer any role it
+moved?
 ```
 
-This could remove frontend cache guesswork and link exposure outcomes to
-canonical mutations. It is deliberately not part of the first compiler seam.
-It earns implementation only if static invalidation obligations remain a real
-source of stale-state defects after the compiler exists.
+## 8. Optional Enforcement: Test-Time Semantic Effect Sandbox
 
-It must remain a command result, not a universal persisted event log.
+Static path scans cannot prove what code actually writes. A future bounded
+experiment may instrument test runs, not production requests:
 
-## 8. How This Helps The Founder Core Loop
+```text
+enter authority lease scope
+-> execute canonical command
+-> observe ORM/Redis/external effects
+-> map effects to semantic truth roles
+-> reject undeclared or foreign writes
+-> emit normalized trace
+```
 
-For a future WorkSprint contract, one declaration could establish:
+Possible implementation points include SQLAlchemy flush hooks, instrumented
+Redis adapters, and browser/API correlation fixtures. Production runtime does
+not depend on the sandbox.
 
-- WorkSprint owns accepted intent and closure boundary only;
-- Task and Stopwatch remain referenced authorities;
-- activation writes Sprint/member/session linkage;
-- Pressure Map and Today queries must invalidate;
-- Start, closure, and recovery surfaces require browser-owned exposure truth;
-- Sprint rows enter export/delete and cleanup proof;
-- operator access remains read-only;
-- characterization, browser, supersession, and rollback proof are mandatory.
+This could eventually replace brittle `db.commit()` path heuristics with
+observed effect proof. It is not authorized here and should not be attempted
+unless the first two pilots show that current static scans miss material
+authority drift.
 
-This catches duplication before migration without designing a universal field
-registry or episode platform.
+## 9. What Remains Local
 
-## 9. Main Risks
+The following must not be promoted into a universal governance vocabulary
+merely because they exist:
 
-### Governance schema inflation
+- WorkSprint fields or lifecycle;
+- DecisionEpisode fragments;
+- Pressure Map formulas and horizons;
+- survey priors and predictor thresholds;
+- frontend cache keys;
+- ORM field names;
+- route layout;
+- provider-specific DTOs;
+- recovery option sets;
+- current output copy.
 
-Mitigation: contracts describe capability boundaries only. New top-level keys
-require a compiler schema change and a demonstrated cross-capability need.
+They remain local domain design. If multiple independently useful product
+paths later require identical semantics, a shared protocol can be proposed
+then.
 
-### Generated-code opacity
+## 10. How This Supports Product Evolution
 
-Mitigation: generate data and reports, not domain mutation logic. Generated
-files are deterministic, diffable, and carry source references.
+A later WorkSprint implementation would request a local authority role such as
+`work_sprint.intent.write.v1`. Its lease could initially bind to one modular
+monolith command. WorkSprint scenarios would prove that it:
 
-### Big-bang cutover
+- owns accepted intent and closure evidence only;
+- references rather than copies task, deadline, stopwatch, and exposure truth;
+- routes confirmed canonical changes through existing authorities;
+- preserves browser-owned exposure and user-data treatment.
 
-Mitigation: shadow compilation and parity checks precede every authority
-transfer. One projection becomes authoritative at a time.
+Later, WorkSprint could be split, collapsed into a simpler Next Move flow, or
+deleted. Only its local lease and scenarios change. The global constitution
+does not learn that WorkSprint is a permanent feature.
 
-### Compiler becomes a release bottleneck
+That is the desired asymmetry:
 
-Mitigation: keep local validation fast, error messages capability-scoped, and
-warning-only rules separate from mechanical hard failures.
+```text
+product ontology may evolve quickly
+constitutional truth changes rarely
+implementation bindings are disposable
+generated topology is always replaceable
+```
 
-### Governance becomes the product
+## 11. Adversarial Tests For Ossification
 
-Mitigation: no runtime dependency, no user-facing governance UI, and a strict
-budget: the compiler must remove more repeated declarations and scans than it
-adds.
+Any control-plane rewrite must survive these counterfactuals before adoption:
 
-## 10. Rewrite Decision
+1. Rename and split `TaskManager`; update only the holder lease. No
+   constitutional predicate changes.
+2. Replace React Query with another cache; trace rules remain unchanged and
+   only observed bindings disappear or change.
+3. Merge two route modules; no feature or truth-role identity changes.
+4. Replace one table with two normalized tables; export/delete and truth-role
+   scenarios still pass after binding updates.
+5. Remove the Architecture Twin entirely; runtime and user behavior remain
+   unchanged.
+6. Implement the same legal trace through a deliberately different test
+   architecture; both implementations pass the same scenarios.
+7. Delete a failed founder-only feature; no global ontology migration is
+   required.
 
-The current registries should not be discarded immediately. Their accumulated
-invariants are the specification and parity oracle for the rewrite.
+Failure of any test means governance has frozen implementation shape.
 
-The recommended decision is:
+## 12. What To Retire And What To Preserve
 
-> Build a shadow Capability Contract Compiler, prove it can reconstruct the
-> current control plane, then replace hand-maintained projections one at a time.
-> Keep canonical product services, exposure lifecycle, user-data execution,
-> and clean-data formulas outside the compiler.
+Preserve initially:
 
-This is a substantial governance rewrite with bounded product risk. It solves
-more than the WorkSprint problem while avoiding a universal runtime framework.
+- executable output-surface policy;
+- executable user-data export/delete registry;
+- current clean-data and claim enforcement;
+- current browser-render acknowledgement;
+- existing registries as parity evidence;
+- existing CI hard gates.
 
-## 11. Hard Stop
+Retire only after demonstrated replacement value:
 
-This assessment authorizes no compiler, generated artifact, registry cutover,
-runtime policy, route, migration, feature, deployment, or authority transfer.
+- duplicated human-readable owner tables;
+- repeated path lists used only for documentation;
+- scanners whose only purpose is reconstructible by the twin;
+- preservation entries that have become generated change evidence rather than
+  enduring feature contracts.
+
+Do not plan a generated runtime-registry cutover. Runtime policy should remain
+near executable behavior unless a separate future decision proves that moving
+it improves the product and failure model.
+
+## 13. Rewrite Decision
+
+Do not build the previously proposed Capability Contract Compiler.
+
+The stronger candidate is a shadow spike that proves three things with two
+existing domains:
+
+1. stable trace predicates can be expressed without current paths or tables;
+2. current holders can be represented as revocable leases;
+3. a generated twin and change packet can answer impact questions without
+   becoming runtime input.
+
+Pilot domains:
+
+- task lifecycle, to exercise canonical writes, invalidation, export/delete,
+  and rollback;
+- browser-owned exposure, to exercise decision, delivery, authenticated
+  render, interaction, terminal outcomes, and cross-user rejection.
+
+If this does not delete more repeated governance than it adds, or if product
+work begins conforming to the tool rather than the invariants, delete the
+spike.
+
+## 14. Hard Stop
+
+This assessment authorizes no trace engine, authority lease, Architecture
+Twin, test instrumentation, generated artifact, registry replacement, CI
+change, runtime policy, route, migration, feature, deployment, or authority
+transfer.
