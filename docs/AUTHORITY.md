@@ -137,6 +137,16 @@ The S1a safety-rail registries are:
 - `docs/registries/identity_scoping_ownership.md`
 - `docs/registries/refactor_stabilization_ledger.md`
 
+These current registries remain authoritative. A documentation-only proposal
+to compile their overlapping declarations from federated capability contracts
+is recorded in
+`docs/audits/authority_control_plane_rewrite_assessment_2026_07_16.md` and
+`docs/parked/capability_contract_control_plane_migration_plan_2026_07_16.md`.
+That proposal has no implementation or authority-transfer force. No generated
+artifact may replace an existing registry, scanner, runtime policy, or export/
+delete owner without exact parity, rollback proof, and explicit founder
+approval.
+
 `scripts/scan_authority_surfaces.py` remains report-only by default, but S1c
 has promoted selected allowlisted modes into CI hard gates. CI currently fails
 on missing mutation-surface owners and worker-job write drift via
