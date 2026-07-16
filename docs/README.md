@@ -44,9 +44,36 @@ non-authorizing concept notes:
 - `docs/concepts/ai_capability_completion_map.md`
 - `docs/concepts/product_entitlement_runtime_and_research_prerequisite.md`
 
+For plan-execution dynamics and interpretable computation discovery, read this
+non-authorizing document set:
+
+- `docs/concepts/plan_execution_dynamics_ontology.md` - separates accepted
+  plans, execution, work outcomes, exposure, observation quality, and system
+  burden without creating a scalar user score;
+- `docs/audits/plan_execution_substrate_audit_2026_07_15.md` - static
+  repository feature, evidence, redundancy, and label-integrity audit;
+- `docs/audits/decision_episode_repository_archaeology_audit_2026_07_16.md` -
+  read-only Git-history audit of forgotten intent, latent capability, product
+  recombinations, and adversarial ontology findings;
+- `docs/audits/decision_episode_repository_archaeology_prompt.md` - reusable
+  role-separated prompt for repeating the read-only archaeology audit;
+- `docs/audits/founder_core_loop_episode_fragment_stress_test_2026_07_16.md` -
+  adversarial review of the bounded WorkSprint idea, its duplication risks,
+  and the deliberately rejected universal-registry approach;
+- `docs/concepts/plan_execution_computation_catalogue.md` - catalogue of
+  deterministic, statistical, process-alignment, tree, survival, and future
+  reasoning candidates;
+- `docs/parked/plan_execution_model_research_sequence_2026_07_15.md` - parked
+  falsification and promotion sequence from current refactor evidence through
+  any later model or experiment decision;
+- `docs/parked/founder_core_loop_work_sprint_candidate_plan_2026_07_16.md` -
+  documentation-only founder vertical-slice candidate with a local Data Delta,
+  bounded lifecycle, adversarial proof, and product usefulness gates.
+
 These notes may define vocabulary, candidate roles, and prerequisites. They do
 not authorize runtime AI, adapter wiring, schema work, experiments, pricing,
-or user-visible AI output.
+user-visible AI output, plan-version storage, plan scoring, statistical models,
+or adaptive plan behavior.
 
 For topology, deployment, and proof safety, also read:
 
