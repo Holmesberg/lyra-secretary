@@ -105,12 +105,28 @@ assert(
   "backend restart must reject dirty source"
 );
 assert(
+  restart.includes("Wait-ForDockerEngine") &&
+    restart.includes("Docker Desktop did not become ready"),
+  "backend restart must own Docker readiness for backend-only recovery"
+);
+assert(
   restart.includes('"build", "backend"') && restart.includes('"up", "-d", "--no-build"'),
   "backend restart must build before replacing the running container"
 );
 assert(
-  restart.includes("org.lyraos.backend-build-id") && restart.includes("does not match expected commit"),
-  "no-build restart must verify the image label against the expected commit"
+  restart.includes("Get-DockerImageBuildId") &&
+    restart.includes("ConvertFrom-Json") &&
+    restart.includes("org.lyraos.backend-build-id"),
+  "no-build restart must parse the existing image build label structurally"
+);
+assert(
+  !restart.includes("docker image inspect --format"),
+  "backend image metadata must not depend on brittle Docker Go-template quoting"
+);
+assert(
+  /\$expectedBuildId\s*=\s*Get-DockerImageBuildId\s+\$publicImage/.test(restart) &&
+    /Reusing existing backend image build/.test(restart),
+  "no-build recovery must preserve the deployed image build rather than require source HEAD"
 );
 assert(
   restart.includes("Restore-PreviousBackend") && restart.includes("lyra-backend-public:previous"),
@@ -121,8 +137,23 @@ assert(
   "backend restart must fail when the served build id does not match"
 );
 assert(
-  reboot.includes("restart_backend_public.ps1") && reboot.includes("-ApprovedPublicRestart"),
+  reboot.includes("restart_backend_public.ps1") &&
+    /ApprovedPublicRestart\s*=\s*\$true/.test(reboot),
   "reboot orchestration must use the authoritative approval-gated backend restart"
+);
+assert(
+  reboot.includes("DockerWaitSeconds") && reboot.includes("DockerPollSeconds"),
+  "reboot orchestration must delegate Docker readiness timing to backend recovery"
+);
+assert(
+  reboot.includes("restart_frontend_wsl.ps1") &&
+    reboot.includes("SkipPublicCheck"),
+  "reboot orchestration must delegate frontend recovery to the authoritative atomic restart"
+);
+assert(
+  !reboot.includes("npm run build:public") &&
+    !/rm\s+-rf\s+["']?\$PUBLIC_NEXT_DIR/.test(reboot),
+  "reboot orchestration must not duplicate or destructively replace frontend artifacts"
 );
 
 console.log(JSON.stringify({ ok: true, checked: "public_backend_isolation_contract" }));

@@ -207,6 +207,13 @@ laptop is asleep, wake/login should run the startup watchdog. If not, run:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\watch_public_runtime.ps1
 ```
 
+This is the canonical one-command recovery path. It classifies tunnel-only,
+frontend-only, backend-only, and full-stack failure separately, reuses the
+already deployed artifacts by default, starts only the failed layers, and then
+requires public topology plus the served static asset graph to pass. Use
+`-AllowFullBuild` only when the command reports that an existing artifact is
+invalid; it is not the normal wake/restart path.
+
 For proof-only checks that must not repair services or start runtime helpers,
 use:
 
@@ -225,12 +232,13 @@ Supabase holds the data *off* the laptop so:
 
 | Failure mode | Symptom | Fix |
 |---|---|---|
-| Tunnel down (cloudflared killed) | `https://lyraos.org` -> 1033 / no response | `powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1` |
+| Tunnel down (cloudflared killed) | `https://lyraos.org` -> 1033 / no response | Run the canonical watchdog command above; it restarts only the tunnel when local services are healthy |
 | WSL DNS blocks tunnel startup | Tunnel log contains `Couldn't resolve SRV record` against `10.255.255.254:53` | Use `scripts/restart_cloudflared_wsl.ps1`; it runs cloudflared with explicit `1.1.1.1` and `8.8.8.8` DNS resolvers |
-| Backend container down | `https://api.lyraos.org/v1/health` → 502 | `docker compose up -d backend` |
+| Backend container down | `https://api.lyraos.org/v1/health` → 502 | Run the canonical watchdog command above; it reuses the labeled deployed image and preserves its build identity |
 | CORS split-brain | Browser shows `Failed to fetch` from `/v1/users/me`, while `curl localhost:8000/` returns 200 | Verify `CORS_ALLOWED_ORIGINS` includes the browser origin and rerun preflight; see `archive/docs_history/runtime_incident_cors_split_brain_2026_05_12.md` |
 | Mixed runtime topology | `/api/topology` returns `verified_topology=false`, e.g. `.org` serving localhost auth/API or localhost serving public auth/API | Stop browser verification. Restart the intended frontend env and rerun `node scripts/verify_runtime_topology.mjs --topology public` or `--topology local`. For `.org`, use `scripts/restart_frontend_wsl.ps1`; see `docs/incidents/2026-05-17-public-frontend-mixed-topology.md`. |
-| Frontend process killed or incomplete `.next-public` artifact | `https://lyraos.org` → 502 while `https://api.lyraos.org/v1/health` stays 200 | From Windows repo root: `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
+| Frontend process killed | `https://lyraos.org` → 502 while `https://api.lyraos.org/v1/health` stays 200 | Run the canonical watchdog command above; it reuses and validates `.next-public` without restarting the backend |
+| Frontend artifact invalid | Watchdog repairs the process but the topology/static-asset proof still fails | Inspect the reported artifact failure, then rerun the watchdog with `-AllowFullBuild` |
 | Supabase outage | API returns 5xx; connection errors in backend log | Flip `.env` back to SQLite backup + restart backend. Supabase data preserved, new writes go to SQLite until resolved. Manual reconciliation needed after. |
 | Domain issue (registrar lock, DNS break) | `lyraos.org` DNS fails | Cloudflare dashboard → Registrar + DNS tab. `oslyra.com` is the name-swap candidate if lyraos.org becomes unusable (see dogfood P2 entry). |
 | `cert.pem` lost / revoked | `cloudflared` operations fail auth | `cloudflared tunnel login` on laptop, re-authenticate 24p0248@eng.asu.edu.eg |
@@ -271,36 +279,16 @@ Services that survive sleep vs require repair:
 
 | Service | Survives sleep? | Recovery |
 |---------|----------------|----------|
-| Docker (backend + Redis) | Usually yes (containers stay up) | `docker compose ps` -> restart if "Exited" |
-| Cloudflared tunnel | Often no (foreground process can die) | Watchdog, or `powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1` |
-| Next.js (frontend) | Sometimes no (tmux process may die; `.next-public` can be left incomplete if a public build is interrupted) | Watchdog, or `powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1` |
+| Docker (backend + Redis) | Usually yes (containers stay up) | Canonical watchdog command |
+| Cloudflared tunnel | Often no (foreground process can die) | Canonical watchdog command |
+| Next.js (frontend) | Sometimes no (tmux process may die) | Canonical watchdog command |
 | APScheduler | Yes (restarts with backend) | Automatic — fires missed jobs on wake |
 | Supabase connection pool | Yes (pool_pre_ping reconnects stale conns) | Automatic |
 | Redis data | Yes (persistent volume) | Automatic |
 
-**Quick recovery script (copy-paste):**
-```bash
-# 1. Docker
-docker compose ps
-docker compose restart  # if anything shows Exited
-
-# 2. Tunnel
-powershell -ExecutionPolicy Bypass -File scripts/restart_cloudflared_wsl.ps1
-sleep 2 && curl -sf https://api.lyraos.org/v1/health || echo "TUNNEL DOWN"
-
-# 3. Frontend
-# Stops stale next/npm processes, removes .next-public, rebuilds public topology,
-# verifies BUILD_ID and public /api/topology, then starts `start:public`
-# inside WSL tmux session `lyra-frontend`.
-powershell -ExecutionPolicy Bypass -File scripts/restart_frontend_wsl.ps1
-
-# 4. Orphan check
-# Runtime HTTP auth requires a valid bearer/JWT. Do not use X-User-Id outside
-# tests. Use an authenticated browser session, an operator diagnostic endpoint,
-# or backend logs until an operator service-token path exists.
-
-# 5. Recent errors
-docker logs lyrasecretaryv01-backend-1 --since 1h 2>&1 | grep -i error | tail -10
+**Quick recovery command:**
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\watch_public_runtime.ps1
 ```
 
 ## References

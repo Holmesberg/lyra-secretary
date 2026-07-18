@@ -75,6 +75,64 @@ function Ensure-OpenClawOperatorRelay([string]$RepoRoot, [bool]$Skip) {
     Start-OpenClawOperatorRelay $RepoRoot
 }
 
+function Invoke-CheckedPowerShell(
+    [string]$ScriptPath,
+    [string[]]$Arguments,
+    [string]$FailureMessage
+) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw $FailureMessage
+    }
+}
+
+function Invoke-PublicFrontendRepair([string]$RepoRoot, [bool]$ReuseExistingArtifact) {
+    $arguments = @("-SkipPublicCheck")
+    if ($ReuseExistingArtifact) {
+        $arguments += "-NoBuild"
+    }
+    Invoke-CheckedPowerShell `
+        (Join-Path $RepoRoot "scripts\restart_frontend_wsl.ps1") `
+        $arguments `
+        "public frontend repair failed."
+}
+
+function Invoke-PublicBackendRepair([string]$RepoRoot, [bool]$ReuseExistingImage) {
+    $arguments = @("-ApprovedPublicRestart", "-SkipHostedCheck")
+    if ($ReuseExistingImage) {
+        $arguments += "-NoBuild"
+    }
+    Invoke-CheckedPowerShell `
+        (Join-Path $RepoRoot "scripts\restart_backend_public.ps1") `
+        $arguments `
+        "public backend repair failed."
+}
+
+function Invoke-PublicTunnelRepair([string]$RepoRoot) {
+    Invoke-CheckedPowerShell `
+        (Join-Path $RepoRoot "scripts\restart_cloudflared_wsl.ps1") `
+        @("-ForceRestart") `
+        "Cloudflare tunnel repair failed."
+}
+
+function Invoke-FullPublicStackRepair(
+    [string]$RepoRoot,
+    [bool]$ReuseExistingArtifacts
+) {
+    $arguments = @(
+        "-SkipPublicCheck",
+        "-SkipRelay",
+        "-DockerWaitSeconds", "240"
+    )
+    if ($ReuseExistingArtifacts) {
+        $arguments += "-NoBuild"
+    }
+    Invoke-CheckedPowerShell `
+        (Join-Path $RepoRoot "scripts\start_public_after_reboot.ps1") `
+        $arguments `
+        "public stack repair failed."
+}
+
 function Test-StaticAssetGraph([string]$Name, [string]$BaseUri, [int]$Timeout) {
     $failures = @()
     try {
@@ -147,6 +205,7 @@ try {
     $localOk = $localFrontend.Ok -and $localApi.Ok
     $publicOk = $publicFrontend.Ok -and $publicApi.Ok
     $needsFrontendRepair = $false
+    $reuseExistingArtifacts = -not $AllowFullBuild
 
     if ($publicOk) {
         Write-Step "Verifying public topology"
@@ -178,30 +237,27 @@ try {
 
     if ($needsFrontendRepair) {
         Write-Step "Repairing public frontend static asset graph"
-        powershell -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\restart_frontend_wsl.ps1")
-        if ($LASTEXITCODE -ne 0) {
-            throw "public frontend restart failed."
-        }
+        Invoke-PublicFrontendRepair $repoRoot $reuseExistingArtifacts
     } elseif ($localOk) {
         Write-Step "Repairing Cloudflare tunnel only"
-        powershell -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\restart_cloudflared_wsl.ps1") -ForceRestart
-        if ($LASTEXITCODE -ne 0) {
-            throw "Cloudflare tunnel restart failed."
+        Invoke-PublicTunnelRepair $repoRoot
+    } elseif (-not $localFrontend.Ok -and $localApi.Ok) {
+        Write-Step "Repairing public frontend only"
+        Invoke-PublicFrontendRepair $repoRoot $reuseExistingArtifacts
+        if (-not $publicApi.Ok) {
+            Write-Step "Repairing Cloudflare tunnel after frontend recovery"
+            Invoke-PublicTunnelRepair $repoRoot
+        }
+    } elseif ($localFrontend.Ok -and -not $localApi.Ok) {
+        Write-Step "Repairing public backend only"
+        Invoke-PublicBackendRepair $repoRoot $reuseExistingArtifacts
+        if (-not $publicFrontend.Ok) {
+            Write-Step "Repairing Cloudflare tunnel after backend recovery"
+            Invoke-PublicTunnelRepair $repoRoot
         }
     } else {
-        Write-Step "Repairing local stack and Cloudflare tunnel"
-        $recoveryArgs = @(
-            "-ExecutionPolicy", "Bypass",
-            "-File", (Join-Path $repoRoot "scripts\start_public_after_reboot.ps1"),
-            "-DockerWaitSeconds", "240"
-        )
-        if (-not $AllowFullBuild) {
-            $recoveryArgs += "-NoBuild"
-        }
-        powershell @recoveryArgs
-        if ($LASTEXITCODE -ne 0) {
-            throw "public stack recovery failed."
-        }
+        Write-Step "Repairing full local stack and Cloudflare tunnel"
+        Invoke-FullPublicStackRepair $repoRoot $reuseExistingArtifacts
     }
 
     Write-Step "Rechecking public runtime after repair"
@@ -223,7 +279,12 @@ try {
     $publicAssetsAfter = Test-StaticAssetGraph "public_static_assets_after" "https://lyraos.org/" $TimeoutSeconds
     Write-CheckResult $publicAssetsAfter
     if (-not $publicAssetsAfter.Ok) {
-        throw "public static asset graph remains unhealthy after repair: $($publicAssetsAfter.Error)"
+        $buildHint = if ($AllowFullBuild) {
+            ""
+        } else {
+            " Rerun with -AllowFullBuild only if the existing artifact is invalid."
+        }
+        throw "public static asset graph remains unhealthy after repair: $($publicAssetsAfter.Error).$buildHint"
     }
     Write-Host "Static assets referenced by public HTML: $($publicAssetsAfter.AssetCount)"
 
